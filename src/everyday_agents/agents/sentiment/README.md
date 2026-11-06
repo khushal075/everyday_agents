@@ -1,6 +1,6 @@
 # Sentiment baseline
 
-Status: the prediction component is implemented. The sentiment policy, tool,
+Status: the prediction component and sentiment policy are implemented. The tool
 and end-to-end agent are not implemented yet.
 
 `SentimentBaseline.predict(text)` returns a `SentimentPrediction` containing:
@@ -26,3 +26,17 @@ counts repeated words. Empty input is rejected. Non-empty text without recognise
 words is uncertain. It does not handle negation ("not good"), sarcasm, context,
 word forms such as "loved", or multilingual sentiment reliably. A single matched
 word can yield a polarity of -1 or +1 without indicating high confidence.
+
+## Decision policy
+
+`SentimentPolicy.decide(prediction)` selects an action and provides a reason:
+
+| Predicted sentiment | Action |
+| --- | --- |
+| positive | `record` |
+| negative | `prepare_review` |
+| uncertain | `prepare_review` |
+
+The policy uses the label, without applying confidence thresholds to polarity.
+Unknown labels raise `ValueError`. The policy does not execute tools, save
+feedback, or modify the prediction. Tool execution is a separate step.
