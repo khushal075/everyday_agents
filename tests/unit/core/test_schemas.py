@@ -1,28 +1,41 @@
-"""Validate the shared contracts without introducing third-party dependencies."""
+"""Validate shared contracts without prescribing domain prediction formats."""
 
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 import json
 import unittest
 
-from everyday_agents.core.schemas import ActionResult, AgentRun, Decision, Prediction
+from everyday_agents.core.schemas import ActionResult, AgentRun, Decision
+
+
+@dataclass(frozen=True)
+class SentimentOutput:
+    sentiment: str
+    polarity: float
 
 
 class SchemaTests(unittest.TestCase):
-    def test_scores_keep_domain_specific_scales(self):
-        polarity = Prediction("negative", -0.8, "Polarity from -1 to 1")
-        match = Prediction("suitable", 92.0, "Personal match from 0 to 100")
-        self.assertEqual(polarity.score, -0.8)
-        self.assertEqual(match.score, 92.0)
+    def test_run_accepts_a_score_directly(self):
+        run = AgentRun[float](
+            0.8, Decision("review", "Score meets review threshold"), ActionResult(True)
+        )
+        self.assertEqual(run.prediction, 0.8)
 
-    def test_nonfinite_scores_rejected(self):
-        for score in (float("nan"), float("inf"), -float("inf")):
-            with self.subTest(score=score), self.assertRaises(ValueError):
-                Prediction("unknown", score, "Example score")
+    def test_run_preserves_domain_specific_output(self):
+        prediction = SentimentOutput("negative", -0.8)
+        run = AgentRun[SentimentOutput](
+            prediction, Decision("review", "Negative feedback"), ActionResult(True)
+        )
+        self.assertIs(run.prediction, prediction)
+        self.assertEqual(run.prediction.sentiment, "negative")
 
-    def test_score_meaning_and_identifiers_required(self):
-        for arguments in ((" ", 0, "Polarity"), ("neutral", 0, " ")):
-            with self.subTest(arguments=arguments), self.assertRaises(ValueError):
-                Prediction(*arguments)
+    def test_run_accepts_a_ranking_without_label_or_score(self):
+        ranking = ["job-3", "job-1"]
+        run = AgentRun[list[str]](
+            ranking, Decision("shortlist", "Best preference matches"), ActionResult(True)
+        )
+        self.assertEqual(run.prediction, ranking)
+
+    def test_decision_requires_action_and_reason(self):
         for arguments in ((" ", "Review needed"), ("review", " ")):
             with self.subTest(arguments=arguments), self.assertRaises(ValueError):
                 Decision(*arguments)
@@ -36,16 +49,16 @@ class SchemaTests(unittest.TestCase):
         first_decision.parameters["queue"] = "feedback"
         self.assertEqual(second_decision.parameters, {})
 
-    def test_failed_run_can_be_serialized(self):
+    def test_failed_run_with_domain_dataclass_can_be_serialized(self):
         run = AgentRun(
-            Prediction("negative", -0.8, "Polarity from -1 to 1"),
+            SentimentOutput("negative", -0.8),
             Decision("prepare_review", "Negative feedback"),
             ActionResult(False, error="Review storage unavailable"),
         )
         payload = json.loads(json.dumps(asdict(run), allow_nan=False))
         self.assertFalse(payload["result"]["success"])
         self.assertEqual(payload["result"]["error"], "Review storage unavailable")
-        self.assertEqual(payload["prediction"]["score_meaning"], "Polarity from -1 to 1")
+        self.assertEqual(payload["prediction"], {"sentiment": "negative", "polarity": -0.8})
 
 
 if __name__ == "__main__":
