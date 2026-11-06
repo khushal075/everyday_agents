@@ -16,3 +16,13 @@ class SentimentPrediction:
     polarity: float
     positive_matches: int
     negative_matches: int
+
+
+@dataclass(frozen=True)
+class FeedbackRecord:
+    """A local record created by the sentiment tool, not an external ticket."""
+
+    record_id: str
+    text: str
+    status: Literal["recorded", "pending_review"]
+    reason: str

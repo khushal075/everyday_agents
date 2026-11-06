@@ -1,7 +1,7 @@
 # Sentiment baseline
 
-Status: the prediction component and sentiment policy are implemented. The tool
-and end-to-end agent are not implemented yet.
+Status: the prediction component, policy, and in-memory feedback tool are
+implemented. The end-to-end agent factory and runnable demo are not implemented yet.
 
 `SentimentBaseline.predict(text)` returns a `SentimentPrediction` containing:
 
@@ -40,3 +40,20 @@ word can yield a polarity of -1 or +1 without indicating high confidence.
 The policy uses the label, without applying confidence thresholds to polarity.
 Unknown labels raise `ValueError`. The policy does not execute tools, save
 feedback, or modify the prediction. Tool execution is a separate step.
+
+## Feedback tool
+
+`FeedbackTool.execute(text, decision)` creates an in-memory `FeedbackRecord`:
+
+- `record` produces status `recorded`.
+- `prepare_review` produces status `pending_review`.
+
+Each record contains a unique ID, the original text, status, and decision reason.
+The returned `ActionResult` includes those fields. `verify(result)` compares all
+reported fields with the stored record; a fabricated or modified result fails.
+`tool.records` provides an insertion-ordered snapshot for inspection.
+
+Empty/non-text inputs, unsupported actions, and non-empty action parameters are
+rejected before storage. Repeated executions create separate records; there is
+no automatic deduplication. Records belong to one tool instance and disappear
+when it is discarded. Nothing is saved to disk, sent, or routed externally.
