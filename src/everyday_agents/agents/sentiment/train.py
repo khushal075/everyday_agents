@@ -76,6 +76,41 @@ def train_from_file(source: str | Path, *, seed: int = 42) -> SentimentTrainingR
     return SentimentTrainingResult(predictor, splits)
 
 
+def training_report(
+    source: str | Path,
+    *,
+    seed: int = 42,
+    output: str | Path | None = None,
+    model_version: str = "1.0.0",
+    evaluate_test: bool = False,
+    text: str | None = None,
+) -> dict[str, Any]:
+    """Train and report validation results, optionally test and save.
+
+    Evaluation never selects parameters automatically. Existing artifact paths
+    are rejected before training; errors propagate to the caller.
+    """
+    if output is not None and (Path(output).exists() or Path(output).is_symlink()):
+        raise FileExistsError(f"Artifact destination already exists: {output}")
+    trained = train_from_file(source, seed=seed)
+    report: dict[str, Any] = {
+        "training_rows": len(trained.splits.train),
+        "validation_rows": len(trained.splits.validation),
+        "test_rows": len(trained.splits.test),
+        "classes": [str(label) for label in trained.predictor.pipeline.classes_],
+    }
+    report["validation"] = asdict(compare_with_baseline(trained.predictor, trained.splits.validation))
+    if evaluate_test:
+        report["test"] = asdict(compare_with_baseline(trained.predictor, trained.splits.test))
+    if text is not None:
+        report["prediction"] = asdict(trained.predictor.predict(text))
+    if output is not None:
+        report["artifact"] = str(save_predictor(
+            trained.predictor, output, model_version=model_version,
+        ))
+    return report
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train a demo TF-IDF sentiment model")
     parser.add_argument("--data", type=Path, default=Path("data/samples/sentiment/feedback.jsonl"))
@@ -86,25 +121,13 @@ def main() -> None:
     parser.add_argument("--evaluate-test", action="store_true", help="Explicit final test evaluation; do not use for tuning")
     args = parser.parse_args()
     try:
-        trained = train_from_file(args.data, seed=args.seed)
-        output: dict[str, Any] = {
-            "training_rows": len(trained.splits.train),
-            "validation_rows": len(trained.splits.validation),
-            "test_rows": len(trained.splits.test),
-            "classes": [str(label) for label in trained.predictor.pipeline.classes_],
-        }
-        output["validation"] = asdict(compare_with_baseline(trained.predictor, trained.splits.validation))
-        if args.evaluate_test:
-            output["test"] = asdict(compare_with_baseline(trained.predictor, trained.splits.test))
-        if args.text is not None:
-            output["prediction"] = asdict(trained.predictor.predict(args.text))
-        if args.output is not None:
-            output["artifact"] = str(save_predictor(
-                trained.predictor, args.output, model_version=args.model_version,
-            ))
+        report = training_report(
+            args.data, seed=args.seed, output=args.output, model_version=args.model_version,
+            evaluate_test=args.evaluate_test, text=args.text,
+        )
     except (OSError, ValueError, TypeError) as exc:
         parser.error(str(exc))
-    print(json.dumps(output, indent=2, allow_nan=False))
+    print(json.dumps(report, indent=2, allow_nan=False))
 
 
 if __name__ == "__main__":

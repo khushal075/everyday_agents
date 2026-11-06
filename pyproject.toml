@@ -13,5 +13,8 @@ dependencies = [
     "scikit-learn>=1.9.1",
 ]
 
+[project.scripts]
+everyday-agents = "everyday_agents.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
