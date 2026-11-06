@@ -1,7 +1,8 @@
 # Sentiment baseline
 
-Status: the complete rules-based workflow, factory, and runnable demo are
-implemented. A trained ML predictor is not implemented yet.
+Status: the rules-based workflow and TF-IDF/logistic regression training and
+inference are implemented. Model evaluation, artifact integration, and the main
+CLI are separate upcoming steps.
 
 `SentimentBaseline.predict(text)` returns a `SentimentPrediction` containing:
 
@@ -34,6 +35,7 @@ word can yield a polarity of -1 or +1 without indicating high confidence.
 | Predicted sentiment | Action |
 | --- | --- |
 | positive | `record` |
+| neutral (learned model) | `record` |
 | negative | `prepare_review` |
 | uncertain | `prepare_review` |
 
@@ -82,3 +84,43 @@ print(run.result.success)   # True
 
 Each factory call creates its own in-memory tool. An existing tool or compatible
 predictor can be passed using `create_agent(tool=..., predictor=...)`.
+
+## Train a learned predictor
+
+```sh
+uv sync
+uv run python -m everyday_agents.agents.sentiment.train --text "Great helpful service"
+```
+
+This loads the 72 synthetic labelled examples, splits them into 58 training, 7
+validation, and 7 test rows (seed 42), and fits TF-IDF plus logistic regression
+on training rows only. Unigrams and bigrams are used, without removing negation
+words. It prints split counts and an optional prediction; it does not evaluate
+the held-out partitions, save the model, or claim real-world accuracy.
+
+```python
+from everyday_agents.agents.sentiment import create_agent
+from everyday_agents.agents.sentiment.train import train_from_file
+
+trained = train_from_file("data/samples/sentiment/feedback.jsonl")
+agent = create_agent(predictor=trained.predictor)
+run = agent.run("This is terrible and broken")
+print(run.prediction.probabilities)
+```
+
+The learned model predicts positive, negative, or neutral. Its output is
+`LearnedSentimentPrediction`, separate from baseline polarity and word counts.
+Probabilities are model estimates, not calibrated confidence. No low-confidence
+threshold is applied; unknown vocabulary still produces a class prediction.
+Neutral feedback is recorded. Baseline uncertain output still requires review.
+
+Data rows require non-empty `text` and a `label` of positive, negative, or neutral;
+`data/schemas/sentiment.schema.json` documents this contract. `uncertain` is not a
+ground-truth label. Training requires all three classes in the training partition.
+The shared splitter is row-level and not stratified or group-aware. Related
+examples or users must be grouped appropriately for real evaluations.
+
+The synthetic examples are hand-authored and balanced (24 per class), with
+related phrasing. They demonstrate code execution, not generalisation or model
+superiority over the baseline. Larger representative data, validation-based
+model selection, and a final untouched test evaluation are still required.

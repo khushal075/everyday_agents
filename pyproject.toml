@@ -8,7 +8,9 @@ version = "0.1.0"
 description = "Small ML models and practical everyday agents"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "scikit-learn>=1.9.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

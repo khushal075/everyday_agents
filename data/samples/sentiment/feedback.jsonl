@@ -1,0 +1,72 @@
+{"text": "I love this helpful product", "label": "positive"}
+{"text": "This is terrible and broken", "label": "negative"}
+{"text": "Delivery arrived today", "label": "neutral"}
+{"text": "The service was excellent", "label": "positive"}
+{"text": "The service was awful", "label": "negative"}
+{"text": "The package contains two items", "label": "neutral"}
+{"text": "Great quality and fast delivery", "label": "positive"}
+{"text": "Poor quality and late delivery", "label": "negative"}
+{"text": "The service operates on weekdays", "label": "neutral"}
+{"text": "The support team solved my problem", "label": "positive"}
+{"text": "The support team ignored my problem", "label": "negative"}
+{"text": "The product is available in blue", "label": "neutral"}
+{"text": "I am happy with this purchase", "label": "positive"}
+{"text": "I am disappointed with this purchase", "label": "negative"}
+{"text": "The application version is listed in settings", "label": "neutral"}
+{"text": "This works perfectly for me", "label": "positive"}
+{"text": "This does not work for me", "label": "negative"}
+{"text": "The order was placed on Monday", "label": "neutral"}
+{"text": "Wonderful experience from start to finish", "label": "positive"}
+{"text": "Horrible experience from start to finish", "label": "negative"}
+{"text": "The box has a printed instruction sheet", "label": "neutral"}
+{"text": "The instructions were clear and useful", "label": "positive"}
+{"text": "The instructions were confusing and useless", "label": "negative"}
+{"text": "The account has a monthly subscription", "label": "neutral"}
+{"text": "I recommend this reliable product", "label": "positive"}
+{"text": "I regret buying this unreliable product", "label": "negative"}
+{"text": "The store opens at nine", "label": "neutral"}
+{"text": "The staff were friendly and helpful", "label": "positive"}
+{"text": "The staff were rude and unhelpful", "label": "negative"}
+{"text": "The product weighs two kilograms", "label": "neutral"}
+{"text": "Everything arrived in perfect condition", "label": "positive"}
+{"text": "Everything arrived damaged", "label": "negative"}
+{"text": "The support reference number is on the email", "label": "neutral"}
+{"text": "I really enjoyed using this application", "label": "positive"}
+{"text": "I hate using this application", "label": "negative"}
+{"text": "The meeting starts at noon", "label": "neutral"}
+{"text": "The update made the app much better", "label": "positive"}
+{"text": "The update made the app much worse", "label": "negative"}
+{"text": "The device has three buttons", "label": "neutral"}
+{"text": "The response was quick and effective", "label": "positive"}
+{"text": "The response was slow and ineffective", "label": "negative"}
+{"text": "The receipt lists the purchase date", "label": "neutral"}
+{"text": "I am pleased with the results", "label": "positive"}
+{"text": "I am unhappy with the results", "label": "negative"}
+{"text": "The update is scheduled for tomorrow", "label": "neutral"}
+{"text": "The design is beautiful and practical", "label": "positive"}
+{"text": "The design is frustrating to use", "label": "negative"}
+{"text": "The app includes a search field", "label": "neutral"}
+{"text": "Setup was easy and straightforward", "label": "positive"}
+{"text": "Setup failed repeatedly", "label": "negative"}
+{"text": "The shipment contains a cable and an adapter", "label": "neutral"}
+{"text": "The team did an amazing job", "label": "positive"}
+{"text": "The team handled this badly", "label": "negative"}
+{"text": "The invoice is attached to the message", "label": "neutral"}
+{"text": "I appreciate the thoughtful customer support", "label": "positive"}
+{"text": "Customer support refused to help", "label": "negative"}
+{"text": "The replacement has the same model number", "label": "neutral"}
+{"text": "The replacement works great", "label": "positive"}
+{"text": "The replacement is also broken", "label": "negative"}
+{"text": "The delivery address is on the label", "label": "neutral"}
+{"text": "The product exceeded my expectations", "label": "positive"}
+{"text": "The product failed my expectations", "label": "negative"}
+{"text": "The manual is available online", "label": "neutral"}
+{"text": "The delivery experience was fantastic", "label": "positive"}
+{"text": "The delivery experience was dreadful", "label": "negative"}
+{"text": "The application has a settings menu", "label": "neutral"}
+{"text": "The new feature saves me time", "label": "positive"}
+{"text": "The new feature keeps crashing", "label": "negative"}
+{"text": "The order includes a standard warranty", "label": "neutral"}
+{"text": "I would happily buy this again", "label": "positive"}
+{"text": "I want a refund for this bad product", "label": "negative"}
+{"text": "The office is located on the second floor", "label": "neutral"}

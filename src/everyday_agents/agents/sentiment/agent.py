@@ -4,15 +4,15 @@ from everyday_agents.core.agent import Agent, Predictor
 
 from .baseline import SentimentBaseline
 from .policy import SentimentPolicy
-from .schemas import SentimentPrediction
+from .schemas import SentimentOutput
 from .tools import FeedbackTool
 
 
 def create_agent(
     *,
-    predictor: Predictor[str, SentimentPrediction] | None = None,
+    predictor: Predictor[str, SentimentOutput] | None = None,
     tool: FeedbackTool | None = None,
-) -> Agent[str, SentimentPrediction]:
+) -> Agent[str, SentimentOutput]:
     """Create a sentiment agent, using the rules baseline by default.
 
     Each call creates an independent feedback store unless a tool is provided.

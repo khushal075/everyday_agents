@@ -1,0 +1,100 @@
+"""Train a sentiment predictor; evaluation and persistence are separate steps.
+
+Run from the repository root:
+    uv run python -m everyday_agents.agents.sentiment.train --text "Great service"
+"""
+
+import argparse
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass
+import json
+from pathlib import Path
+from typing import Any
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.pipeline import Pipeline
+
+from everyday_agents.ml.datasets import load_dataset
+from everyday_agents.ml.splitting import DatasetSplit, split_dataset
+
+from .features import build_vectorizer
+from .predictor import LearnedSentimentPredictor
+from .schemas import SentimentExample
+
+
+def validate_record(record: Mapping[str, Any]) -> None:
+    """Validate domain fields; the shared loader adds file and line context."""
+    SentimentExample(text=record["text"], label=record["label"])
+
+
+def load_examples(source: str | Path) -> list[SentimentExample]:
+    records = load_dataset(source, required_fields=("text", "label"), validator=validate_record)
+    return [SentimentExample(text=row["text"], label=row["label"]) for row in records]
+
+
+class SentimentTrainer:
+    """Implement Trainer for labelled text, returning a fitted predictor.
+
+    Pass training examples only. All three classes must be represented. No
+    feature fitting occurs before this method receives the training partition.
+    """
+
+    def __init__(self, *, seed: int = 42) -> None:
+        self.seed = seed
+
+    def train(self, training_data: Sequence[SentimentExample]) -> LearnedSentimentPredictor:
+        if not training_data:
+            raise ValueError("Sentiment training requires non-empty data")
+        if any(not isinstance(row, SentimentExample) for row in training_data):
+            raise TypeError("Training data must contain SentimentExample records")
+        if {row.label for row in training_data} != {"positive", "negative", "neutral"}:
+            raise ValueError("Training partition must contain positive, negative, and neutral examples")
+        pipeline = Pipeline([
+            ("tfidf", build_vectorizer()),
+            ("classifier", LogisticRegression(max_iter=1000, random_state=self.seed)),
+        ])
+        pipeline.fit([row.text for row in training_data], [row.label for row in training_data])
+        return LearnedSentimentPredictor(pipeline)
+
+
+@dataclass(frozen=True)
+class SentimentTrainingResult:
+    predictor: LearnedSentimentPredictor
+    splits: DatasetSplit[SentimentExample]
+
+
+def train_from_file(source: str | Path, *, seed: int = 42) -> SentimentTrainingResult:
+    """Load, split 80/10/10, and fit on training only.
+
+    Validation and test examples are returned untouched for later evaluation.
+    Splitting is row-level, not stratified or group-aware. Missing training
+    classes raise; larger/grouped datasets need an appropriate split strategy.
+    """
+    splits = split_dataset(load_examples(source), seed=seed)
+    predictor = SentimentTrainer(seed=seed).train(splits.train)
+    return SentimentTrainingResult(predictor, splits)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Train a demo TF-IDF sentiment model")
+    parser.add_argument("--data", type=Path, default=Path("data/samples/sentiment/feedback.jsonl"))
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--text", help="Optionally predict one text after training")
+    args = parser.parse_args()
+    try:
+        trained = train_from_file(args.data, seed=args.seed)
+        output: dict[str, Any] = {
+            "training_rows": len(trained.splits.train),
+            "validation_rows": len(trained.splits.validation),
+            "test_rows": len(trained.splits.test),
+            "classes": [str(label) for label in trained.predictor.pipeline.classes_],
+        }
+        if args.text is not None:
+            output["prediction"] = asdict(trained.predictor.predict(args.text))
+    except (OSError, ValueError, TypeError) as exc:
+        parser.error(str(exc))
+    print(json.dumps(output, indent=2, allow_nan=False))
+
+
+if __name__ == "__main__":
+    main()

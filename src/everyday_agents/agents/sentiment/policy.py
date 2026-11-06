@@ -2,22 +2,27 @@
 
 from everyday_agents.core.schemas import Decision
 
-from .schemas import SentimentPrediction
+from .schemas import SentimentOutput
 
 
 class SentimentPolicy:
-    """Record positive feedback; prepare negative or uncertain text for review.
+    """Record positive/neutral feedback; prepare negative or uncertain text for review.
 
     Routing uses the predicted label, not a confidence threshold: the baseline's
     polarity is not confidence. Unsupported labels fail instead of silently
     recording feedback.
     """
 
-    def decide(self, prediction: SentimentPrediction) -> Decision:
+    def decide(self, prediction: SentimentOutput) -> Decision:
         if prediction.sentiment == "positive":
             return Decision(
                 action="record",
                 reason="Positive feedback can be recorded without a review item",
+            )
+        if prediction.sentiment == "neutral":
+            return Decision(
+                action="record",
+                reason="Neutral feedback can be recorded without a review item",
             )
         if prediction.sentiment == "negative":
             return Decision(
