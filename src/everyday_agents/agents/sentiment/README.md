@@ -1,7 +1,7 @@
 # Sentiment baseline
 
-Status: the prediction component, policy, and in-memory feedback tool are
-implemented. The end-to-end agent factory and runnable demo are not implemented yet.
+Status: the complete rules-based workflow, factory, and runnable demo are
+implemented. A trained ML predictor is not implemented yet.
 
 `SentimentBaseline.predict(text)` returns a `SentimentPrediction` containing:
 
@@ -57,3 +57,28 @@ Empty/non-text inputs, unsupported actions, and non-empty action parameters are
 rejected before storage. Repeated executions create separate records; there is
 no automatic deduplication. Records belong to one tool instance and disappear
 when it is discarded. Nothing is saved to disk, sent, or routed externally.
+
+## Run the complete agent
+
+From the repository root, after `uv sync`:
+
+```sh
+uv run python examples/sentiment_demo.py
+uv run python examples/sentiment_demo.py --text "This is terrible"
+uv run python examples/sentiment_demo.py --text "Great service" --text "Delivery arrived"
+```
+
+The demo prints completed runs as a JSON array. Each run contains its prediction,
+decision, and verified action result. It does not train a model or write files.
+
+```python
+from everyday_agents.agents.sentiment import create_agent
+
+agent = create_agent()
+run = agent.run("This is terrible")
+print(run.decision.action)  # prepare_review
+print(run.result.success)   # True
+```
+
+Each factory call creates its own in-memory tool. An existing tool or compatible
+predictor can be passed using `create_agent(tool=..., predictor=...)`.
