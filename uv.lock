@@ -16,11 +16,15 @@ name = "everyday-agents"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "joblib" },
     { name = "scikit-learn" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "scikit-learn", specifier = ">=1.9.1" }]
+requires-dist = [
+    { name = "joblib", specifier = ">=1.6.0" },
+    { name = "scikit-learn", specifier = ">=1.9.1" },
+]
 
 [[package]]
 name = "joblib"

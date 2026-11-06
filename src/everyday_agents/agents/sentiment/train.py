@@ -1,4 +1,4 @@
-"""Train a sentiment predictor; evaluation and persistence are separate steps.
+"""Train, evaluate on validation data, and optionally save a sentiment predictor.
 
 Run from the repository root:
     uv run python -m everyday_agents.agents.sentiment.train --text "Great service"
@@ -17,8 +17,9 @@ from sklearn.pipeline import Pipeline
 from everyday_agents.ml.datasets import load_dataset
 from everyday_agents.ml.splitting import DatasetSplit, split_dataset
 
+from .evaluation import compare_with_baseline
 from .features import build_vectorizer
-from .predictor import LearnedSentimentPredictor
+from .predictor import LearnedSentimentPredictor, save_predictor
 from .schemas import SentimentExample
 
 
@@ -80,6 +81,9 @@ def main() -> None:
     parser.add_argument("--data", type=Path, default=Path("data/samples/sentiment/feedback.jsonl"))
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--text", help="Optionally predict one text after training")
+    parser.add_argument("--output", type=Path, help="New artifact directory; existing paths are refused")
+    parser.add_argument("--model-version", default="1.0.0")
+    parser.add_argument("--evaluate-test", action="store_true", help="Explicit final test evaluation; do not use for tuning")
     args = parser.parse_args()
     try:
         trained = train_from_file(args.data, seed=args.seed)
@@ -89,8 +93,15 @@ def main() -> None:
             "test_rows": len(trained.splits.test),
             "classes": [str(label) for label in trained.predictor.pipeline.classes_],
         }
+        output["validation"] = asdict(compare_with_baseline(trained.predictor, trained.splits.validation))
+        if args.evaluate_test:
+            output["test"] = asdict(compare_with_baseline(trained.predictor, trained.splits.test))
         if args.text is not None:
             output["prediction"] = asdict(trained.predictor.predict(args.text))
+        if args.output is not None:
+            output["artifact"] = str(save_predictor(
+                trained.predictor, args.output, model_version=args.model_version,
+            ))
     except (OSError, ValueError, TypeError) as exc:
         parser.error(str(exc))
     print(json.dumps(output, indent=2, allow_nan=False))

@@ -1,8 +1,7 @@
 # Sentiment baseline
 
-Status: the rules-based workflow and TF-IDF/logistic regression training and
-inference are implemented. Model evaluation, artifact integration, and the main
-CLI are separate upcoming steps.
+Status: rules-based and learned predictors, validation comparison, and model
+artifact save/load are implemented. The unified project CLI is the next step.
 
 `SentimentBaseline.predict(text)` returns a `SentimentPrediction` containing:
 
@@ -95,8 +94,9 @@ uv run python -m everyday_agents.agents.sentiment.train --text "Great helpful se
 This loads the 72 synthetic labelled examples, splits them into 58 training, 7
 validation, and 7 test rows (seed 42), and fits TF-IDF plus logistic regression
 on training rows only. Unigrams and bigrams are used, without removing negation
-words. It prints split counts and an optional prediction; it does not evaluate
-the held-out partitions, save the model, or claim real-world accuracy.
+words. It prints split counts, validation comparison, and an optional prediction.
+It does not evaluate the test partition unless `--evaluate-test` is supplied.
+These tiny synthetic splits do not establish real-world accuracy.
 
 ```python
 from everyday_agents.agents.sentiment import create_agent
@@ -124,3 +124,52 @@ The synthetic examples are hand-authored and balanced (24 per class), with
 related phrasing. They demonstrate code execution, not generalisation or model
 superiority over the baseline. Larger representative data, validation-based
 model selection, and a final untouched test evaluation are still required.
+
+## Validation and model artifacts
+
+Train, compare fixed models on validation data, and save a new artifact:
+
+```sh
+uv run python -m everyday_agents.agents.sentiment.train --output artifacts/models/sentiment-v1
+```
+
+The output compares learned and baseline predictions on the same validation
+rows. It includes accuracy, per-class precision/recall/F1, macro F1, and a
+confusion matrix. Matrix rows are the three true sentiment labels; columns also
+include uncertain. Baseline abstentions are counted as misses, never converted
+to neutral. Macro F1 averages the three sentiment classes, including classes
+with zero support. Coverage and accuracy among non-abstained examples are
+reported separately; covered accuracy is null when coverage is zero.
+
+Only after model choices are fixed, request the final test report explicitly:
+
+```sh
+uv run python -m everyday_agents.agents.sentiment.train --evaluate-test
+```
+
+This flag is a workflow convention, not a mechanism preventing repeated test
+evaluation. Do not use test scores to tune the model or select a seed.
+
+Load a previously saved trusted model without training:
+
+```python
+from everyday_agents.agents.sentiment import create_agent
+from everyday_agents.agents.sentiment.predictor import load_predictor
+
+loaded = load_predictor("artifacts/models/sentiment-v1")
+agent = create_agent(predictor=loaded.model)
+print(agent.run("Great helpful service"))
+```
+
+Each artifact contains `model` (compressed joblib, including fitted TF-IDF and
+classifier) and `metadata.json`. Existing destinations are refused. The payload
+records Python major/minor and sklearn, numpy, scipy, and joblib versions; loading
+requires matching versions. Recreate the training environment with `uv.lock`.
+These checks happen after deserialization and are not a security boundary.
+Joblib may execute code: load only artifacts you trust. See the
+[scikit-learn persistence guidance](https://scikit-learn.org/stable/model_persistence.html).
+
+Prediction probabilities, labels, and policy decisions are preserved by save/load.
+An artifact contains the trained pipeline, not feedback records; those remain
+in memory. Saving does not imply that a model passed a quality threshold or
+outperformed the baseline.
