@@ -1,7 +1,7 @@
 # Sentiment baseline
 
-Status: rules-based and learned predictors, validation comparison, and model
-artifact save/load are implemented. The unified project CLI is the next step.
+Status: sentiment-focused v0.1 is implemented, including rules-based and learned
+predictors, validation comparison, model artifacts, and the unified project CLI.
 
 `SentimentBaseline.predict(text)` returns a `SentimentPrediction` containing:
 
@@ -173,3 +173,17 @@ Prediction probabilities, labels, and policy decisions are preserved by save/loa
 An artifact contains the trained pipeline, not feedback records; those remain
 in memory. Saving does not imply that a model passed a quality threshold or
 outperformed the baseline.
+
+## Unified v0.1 commands
+
+```sh
+uv run everyday-agents sentiment run --text "This is terrible"
+uv run everyday-agents sentiment train --data data/samples/sentiment/feedback.jsonl --output artifacts/models/sentiment-v1
+uv run everyday-agents sentiment run --model artifacts/models/sentiment-v1 --text "Great helpful service"
+uv run everyday-agents sentiment evaluate --model artifacts/models/sentiment-v1 --data path/to/independent-holdout.jsonl
+```
+
+The run command defaults to the rules baseline unless a saved model is supplied.
+The evaluate command uses every row in its explicit input file; provide independent
+labelled examples and do not report training rows as held-out performance.
+The unified CLI prints one JSON object; the older standalone demo prints an array.
