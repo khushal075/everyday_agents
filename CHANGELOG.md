@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Organise Phase 1 concept-learning and Phase 2 production-behaviour tracks.
+- Add learning path, explicit coverage status, and a future-domain roadmap.
+- Remove verified-empty domain/configuration/evaluation/core scaffolding.
+- Preserve the working sentiment application, shared utilities, CLI, data, tests,
+  and historical v0.1.0 tag. No concept examples are implemented in this cleanup.
+
 ## 0.1.0 — 2026-11-06
 
 First sentiment-focused release.

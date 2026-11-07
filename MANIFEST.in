@@ -2,7 +2,8 @@ include README.md CHANGELOG.md CONTRIBUTING.md uv.lock
 recursive-include docs *.md
 recursive-include data/samples *.jsonl
 recursive-include data/schemas *.json
-recursive-include examples *.py
+recursive-include examples *.py *.md
 recursive-include scripts *.py
-recursive-include tests *.py
+recursive-include tests *.py *.md
 global-exclude *.py[cod]
+recursive-include production *.md

@@ -12,7 +12,14 @@
 7. Compare on independent data with domain-appropriate metrics. Reuse artifacts
    with a model-specific serializer and record compatibility requirements.
 
-Sentiment is the working example. Other domain directories are placeholders.
+Sentiment is the working reference application. Future domains are listed in
+`docs/roadmap.md`; create their directories when implementation starts.
 Extend shared abstractions only for demonstrated requirements. Grouped photos,
 user histories, and chronological tasks may need splitters beyond v0.1's random
 row-level splitter. Planned agents must not silently trigger external actions.
+
+For a Phase 1 teaching example, start in `examples/concepts/` with a self-contained
+program and checks in `tests/concepts/`. Do not require readers to navigate the
+shared runtime to understand the lesson. Explain which behaviours are simulated.
+Phase 2 integrated systems may reuse the package and add operational exercises
+under `production/`. Update the coverage matrix with actual evidence.

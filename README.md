@@ -1,13 +1,27 @@
-# Everyday Agents — v0.1.0
+# Everyday Agents
 
-Small ML models connected to practical agent workflows. This release implements
-one complete use case: **sentiment feedback routing**, with a rules baseline and
-a trained TF-IDF + logistic regression predictor.
+Learn agent concepts through standalone examples, then explore production
+behaviour through an integrated system. The existing **v0.1.0 sentiment reference
+application** remains implemented, with a rules baseline and a trained TF-IDF +
+logistic regression predictor.
 
 The agent predicts sentiment, selects an action, creates a local feedback record,
 and verifies the result. Negative or uncertain feedback is prepared for review;
 positive or neutral feedback is recorded. Records are in memory, with no database,
 external tickets, messages, or paid API requirements.
+
+## Start here
+
+| Track | Location | Status |
+| --- | --- | --- |
+| Phase 1: standalone concept examples | [examples/concepts/](examples/concepts/README.md) | Planned; documentation only |
+| Working sentiment reference application | [src/everyday_agents/agents/sentiment/](src/everyday_agents/agents/sentiment/README.md) | Implemented |
+| Phase 2: production behaviour and infrastructure | [production/](production/README.md) | Planned; documentation only |
+
+Read the [learning path](docs/learning-path.md), [coverage matrix](docs/coverage-matrix.md),
+and [roadmap](docs/roadmap.md). New lessons will be added progressively; no concept
+example implementations are included in this restructure. The original
+`v0.1.0` tag remains available as the historical release.
 
 ## Quick start
 
@@ -68,7 +82,7 @@ See [evaluation](docs/evaluation.md) and [score definitions](docs/score-definiti
 - Sentiment: baseline, training, inference, evaluation, persistence, CLI, and tests.
 - Shared `core`: contracts, one bounded execution cycle, verification, error propagation.
 - Shared `ml`: training contracts, CSV/JSONL loading, splitting, classification metrics, artifacts.
-- Planned: photo cleanup, job matching, expense organiser, study coach, task priority.
+- Future domain candidates are documented in the [roadmap](docs/roadmap.md), without empty source packages.
 
 The 72 included examples are synthetic and small. Their results demonstrate the
 pipeline, not real-world quality or consistent superiority over the baseline.
@@ -97,10 +111,22 @@ distributions, and checks a wheel installed into a fresh environment. Remote CI
 runs after this repository is pushed to a configured GitHub remote.
 
 ```text
-src/everyday_agents/
-├── core/       # Agent contracts and orchestration
-├── ml/         # Shared model lifecycle helpers
-└── agents/     # Domain implementations; sentiment is implemented in v0.1
+everyday_agents/
+├── examples/
+│   ├── concepts/               # Phase 1 planning; standalone lessons added later
+│   └── sentiment_demo.py       # Existing working baseline demo
+├── production/                 # Phase 2 scope; no implementation yet
+├── src/everyday_agents/
+│   ├── core/                   # Existing agent contracts and orchestration
+│   ├── ml/                     # Existing model lifecycle utilities
+│   └── agents/sentiment/       # Existing reference application
+├── tests/
+│   ├── concepts/               # Reserved checks for future lessons
+│   ├── unit/
+│   └── integration/
+├── data/                       # Existing sentiment sample and schema
+├── docs/                       # Learning path, coverage, architecture, roadmap
+└── scripts/                    # Existing installation smoke check
 ```
 
 [Getting started](docs/getting-started.md) · [Architecture](docs/architecture.md) ·
