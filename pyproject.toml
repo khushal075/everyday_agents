@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "joblib>=1.6.0",
+    "mcp>=1,<2",
     "scikit-learn>=1.9.1",
 ]
 
