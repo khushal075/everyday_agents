@@ -1,27 +1,86 @@
-# Phase 1: agent concepts
+# AI agent system design: 15 runnable Python examples
 
-This directory is reserved for small, standalone learning examples. No concept
-examples have been implemented yet. The working sentiment application remains
-in `src/everyday_agents/agents/sentiment/`; its runnable demo remains at
-`examples/sentiment_demo.py`.
+What should an agent do when a tool says “done” but the record is missing? How can it retry after a timeout without doing the same work twice? What happens if approval comes after the program has stopped?
 
-See the [learning path](../../docs/learning-path.md) for the proposed sequence and
-the [coverage matrix](../../docs/coverage-matrix.md) for implementation status.
-Examples will be added individually after their scope is agreed.
+These examples use a simulated robot and its manual to make those system design questions easy to explore. Each script isolates one idea you can run, change, and inspect. Start at **01** to build up from the basics, or jump to **11** for safe retries, **12** for approval across restarts, or **15** to see an evaluation catch a regression.
 
-## Example contract
+## Set up once
 
-Each future example should have:
+Use Python 3.12 or newer and [uv](https://docs.astral.sh/uv/). From the repository root:
 
-- One concrete objective and clearly named agent components.
-- A complete, independently runnable flow with stated dependencies.
-- Expected output and one meaningful failure demonstration.
-- A distinction between model decisions and authorization rules.
-- Explicit completion conditions and execution limits.
-- A description of implemented, simulated, and omitted behaviour.
-- Checks under `tests/concepts/` when executable examples are introduced.
+```bash
+uv sync --locked
+cd examples/concepts
+```
 
-Some protocol examples may require a small companion process. Explain that
-requirement rather than representing a local function call as a real protocol.
-The learning examples should not require navigating the reusable package to
-understand their basic behaviour. Any intentional repetition serves readability.
+Run the commands below from this directory. The project environment includes scikit-learn for Example 02 and the MCP Python SDK for Example 14. **Only Examples 07–09 need Ollama.**
+
+For 07–09, have Ollama running locally at `http://localhost:11434` and a text-generation model installed. If the server isn't already running, start it in another terminal:
+
+```bash
+ollama serve
+```
+
+Use `ollama list` to find the exact installed model name. In the commands below, `qwen` is a local alias; replace it with your installed model name if you haven't created that alias.
+
+## 01–05: Decide, act, and check
+
+| Example | What to watch for | Run |
+| --- | --- | --- |
+| [01 · Rules](01_rule_based_agent.py) | The robot decides whether to move or recharge after each observation. | `uv run python 01_rule_based_agent.py` |
+| [02 · Learned decisions](02_ml_powered_agent.py) | A small decision tree learns to choose an action from labelled examples. | `uv run python 02_ml_powered_agent.py` |
+| [03 · Tools and decision policy](03_tools_and_decision_policy.py) | A policy proposes a tool and named arguments; the executor rejects invalid arguments. | `uv run python 03_tools_and_decision_policy.py` |
+| [04 · Permission and approval](04_authorization_and_approval.py) | The role check determines who can recharge. An operator still has to approve the specific recharge. | `uv run python 04_authorization_and_approval.py` |
+| [05 · Verify the result](05_verified_feedback.py) | A stuck robot reports a successful move. A second observation exposes the mismatch. | `uv run python 05_verified_feedback.py` |
+
+In **04**, type `yes` to approve or `no` to stop. Run `uv run python 04_authorization_and_approval.py --viewer` to see the permission check block recharge before asking.
+
+## 06–09: Find information and use it
+
+| Example | What to watch for | Run |
+| --- | --- | --- |
+| [06 · Retrieval](06_retrieval.py) | Keyword search returns passages, their sources, and matching words. Common words can produce irrelevant matches. | `uv run python 06_retrieval.py` |
+| [07 · Grounded answers](07_grounded_rag.py) | The agent retrieves passages before asking a model to answer and cite them. This is retrieval-augmented generation (RAG). | `uv run python 07_grounded_rag.py --model qwen "How do I recharge the battery?"` |
+| [08 · Reranking](08_reranked_rag.py) | Compare the initial keyword ranking with the reordered list. The model receives the highest-ranked passage. | `uv run python 08_reranked_rag.py --model qwen "How do I recharge the battery?"` |
+| [09 · Memory and context](09_memory_and_context.py) | The agent saves the last topic and uses it to interpret a follow-up. | `uv run python 09_memory_and_context.py --model qwen` |
+
+In **07** or **08**, try replacing the question with `What is the warranty?` to see the agent stop when it finds no matching passage. A valid source ID confirms that the model saw the passage; it doesn't establish that every claim is supported.
+
+In **09**, ask `How do I recharge the battery?`, then `How long does it last?` in the same session. Look for `Using remembered topic: battery`. Type `quit` to exit. A fresh session starts with no remembered topic.
+
+## 10–15: Handle failures and coordinate work
+
+| Example | What to watch for | Run |
+| --- | --- | --- |
+| [10 · Replanning](10_planning_and_replanning.py) | A blocked passage forces the agent to plan a new route from its current location. | `uv run python 10_planning_and_replanning.py` |
+| [11 · Safe recovery](11_safe_recovery.py) | A timeout can happen before or after delivery. The agent checks the record and reuses the operation ID when retrying. | `uv run python 11_safe_recovery.py` |
+| [12 · Resume after approval](12_checkpoints_and_resumable_approval.py) | Separate processes save, approve, and resume the same request. | Follow the checkpoint commands below. |
+| [13 · Coordinated agents](13_coordinated_agents.py) | Route and battery specialists run independent checks. The coordinator combines their results. | `uv run python 13_coordinated_agents.py` |
+| [14 · MCP tools](14_mcp_agent.py) | The agent launches the [server](14_robot_mcp_server.py), discovers a tool, and uses its battery reading to make a decision. | `uv run python 14_mcp_agent.py --robot robot-1` |
+| [15 · Evaluation and observability](15_evaluation_and_observability.py) | A trace shows what happened. Fixed expectations reveal whether a rule change broke a decision. | `uv run python 15_evaluation_and_observability.py` |
+
+For **12**, use a fresh checkpoint in a temporary directory. Type `yes` at the approval prompt:
+
+```bash
+checkpoint_dir="$(mktemp -d)"
+checkpoint="$checkpoint_dir/delivery.json"
+uv run python 12_checkpoints_and_resumable_approval.py start --checkpoint "$checkpoint"
+uv run python 12_checkpoints_and_resumable_approval.py resume --checkpoint "$checkpoint"
+uv run python 12_checkpoints_and_resumable_approval.py approve --checkpoint "$checkpoint"
+uv run python 12_checkpoints_and_resumable_approval.py resume --checkpoint "$checkpoint"
+uv run python 12_checkpoints_and_resumable_approval.py resume --checkpoint "$checkpoint"
+```
+
+The first resume is blocked. After approval, the next resume records the simulated delivery, and the last reports that it was already delivered.
+
+For **14**, try `--robot robot-2` for a higher battery reading or `--robot unknown` for a tool error. The client starts the server for you.
+
+For **15**, the default run passes all four cases. Try a change that looks harmless:
+
+```bash
+uv run python 15_evaluation_and_observability.py --threshold 10
+```
+
+Expect **3 of 4 cases to pass** and exit code **1**. The trace shows why: the agent now tells the robot with 15% battery to move, while the evaluation still expects it to recharge.
+
+These are teaching examples. They show how the pieces work in isolation. Production behavior such as concurrent workers, recovery around external side effects, and deployment belongs to [Phase 2](../../production/README.md).
