@@ -1,8 +1,10 @@
-# AI agent system design: 15 runnable Python examples
+# How AI Agents Work: 15 Runnable Python Examples
 
-What should an agent do when a tool says “done” but the record is missing? How can it retry after a timeout without doing the same work twice? What happens if approval comes after the program has stopped?
+What happens between giving an agent a task and hearing it say “done”? These examples walk through the steps: deciding what to do, finding information, using tools, asking for permission, and checking what actually happened.
 
-These examples use a simulated robot and its manual to make those system design questions easy to explore. Each script isolates one idea you can run, change, and inspect. Start at **01** to build up from the basics, or jump to **11** for safe retries, **12** for approval across restarts, or **15** to see an evaluation catch a regression.
+Each script isolates one idea so you can run it, change it, and see the result. Together, they show the building blocks you can combine when designing an agent system.
+
+Start at **01** to build up from the basics, or jump to **11** for safe retries, **12** for approval across restarts, or **15** to see an evaluation catch a regression.
 
 ## Set up once
 
