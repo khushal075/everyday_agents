@@ -1,7 +1,8 @@
 # Phase 2: production behaviour and infrastructure
 
-Status: planned. This directory contains planning documentation only. There is
-no deployed service or production implementation here yet.
+The [workflow runtime exercise](01_workflow_runtime/README.md) runs locally
+with a feedback API, a separate worker, and a shared SQLite database. The
+remaining operational exercises are planned.
 
 The working v0.1 sentiment application remains under
 `src/everyday_agents/agents/sentiment/`. Its local tests and packaging checks do
