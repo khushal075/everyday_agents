@@ -9,9 +9,11 @@ description = "Small ML models and practical everyday agents"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.163.0",
     "joblib>=1.6.0",
     "mcp>=1,<2",
     "scikit-learn>=1.9.1",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
