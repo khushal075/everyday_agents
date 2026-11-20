@@ -12,6 +12,7 @@ from tempfile import TemporaryDirectory
 
 from fastapi.testclient import TestClient
 from production.api import FeedbackAPI
+from production.category_03_reliability_and_access.security import Principal
 
 MIGRATION = Path(__file__).resolve().parent / "migrations" / "001_initial.sql"
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -24,9 +25,22 @@ def main():
         database_path = Path(directory) / "feedback-runtime.db"
 
         with closing(sqlite3.connect(str(database_path))) as connection:
-            connection.executescript(MIGRATION.read_text(encoding="utf-8"))
+            for filename in (
+                "001_initial.sql", "002_worker_leases.sql", "003_retry_scheduling.sql",
+                "004_access_and_approvals.sql", "005_cancellation_and_approval_controls.sql",
+            ):
+                connection.executescript(
+                    (MIGRATION.parent / filename).read_text(encoding="utf-8")
+                )
 
-        with TestClient(FeedbackAPI(database_path).app) as client:
+        credentials = {
+            "scenario-key": Principal(
+                "scenario", "local", frozenset({"submit_feedback", "read_job"}),
+            ),
+        }
+        with TestClient(FeedbackAPI(
+            database_path, credentials=credentials, require_approval=False,
+        ).app, headers={"X-API-Key": "scenario-key"}) as client:
             submission = client.post("/feedback", json={"text": 'This is terrible'})
 
             assert submission.status_code == 202, submission.text
