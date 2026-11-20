@@ -2,7 +2,11 @@
 
 The [workflow runtime exercise](01_workflow_runtime/README.md) runs locally
 with a feedback API, a separate worker, and a shared SQLite database. The
-remaining operational exercises are planned.
+[policy routing exercise](category_02_models_retrieval_and_tools/README.md)
+uses scripted model responses and local tools. The
+[reliability and access exercises](category_03_reliability_and_access/README.md)
+verify leases, retry limits, tenant access, durable approvals, and cancellation.
+Further deployment and monitoring exercises are planned.
 
 The working v0.1 sentiment application remains under
 `src/everyday_agents/agents/sentiment/`. Its local tests and packaging checks do
