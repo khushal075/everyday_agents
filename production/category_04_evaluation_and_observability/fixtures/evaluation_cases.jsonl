@@ -1,0 +1,5 @@
+{"case_id":"positive","text":"This is excellent","expected_sentiment":"positive","expected_action":"record","expected_status":"recorded"}
+{"case_id":"negative","text":"This is terrible","expected_sentiment":"negative","expected_action":"prepare_review","expected_status":"pending_review"}
+{"case_id":"no_sentiment_words","text":"The package arrived on Tuesday","expected_sentiment":"uncertain","expected_action":"prepare_review","expected_status":"pending_review"}
+{"case_id":"balanced_sentiment","text":"The service was good and bad","expected_sentiment":"uncertain","expected_action":"prepare_review","expected_status":"pending_review"}
+{"case_id":"uppercase_negative","text":"This is TERRIBLE!","expected_sentiment":"negative","expected_action":"prepare_review","expected_status":"pending_review"}
