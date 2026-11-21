@@ -134,9 +134,33 @@ window and require a minimum sample count.
 
 Authentication rejections are included in API failure rates. Consider expected
 rejections when choosing thresholds. The local checker prints findings.
-Notification delivery and recurring scheduling require external wiring.
+Use `check_alerts --notify` for the configured JSON webhook. Deliveries and
+attempt counts persist in `/data/notifications.sqlite3`. Reuse a delivery ID
+only with the same destination and payload. An ambiguous final attempt requires
+checking receiver records before creating a new delivery. Back up the delivery
+ledger when preserving notification history.
+
+Recurring scheduling and provider-specific notification formatting require
+external wiring.
 
 ## Data removal
 
 `docker compose down --volumes` removes this deployment's persistent data.
 Use it only for a disposable exercise or after retaining required backups.
+
+## Identity-provider operations
+
+The OIDC issuer, API audience, and JWKS endpoint are server configuration.
+Validate a new provider with an authenticated smoke test before directing
+users to it. API readiness checks verify the process and database; they do not
+perform a provider login or signing-key availability probe.
+
+Signing keys are cached for five minutes, with PyJWT's refresh controls for
+unknown key IDs. Coordinate key rotation with the provider's supported overlap
+period. Keep tenant and permission claim mapping under trusted administrative
+control.
+
+Do not log access tokens or place them in command-line arguments. Smoke-test
+tokens are read from the environment. Expired tokens require a new provider
+login or token grant. Changing issuer or audience requires recreating the API
+container.

@@ -10,7 +10,9 @@ The [evaluation and observability exercises](category_04_evaluation_and_observab
 add component tracing, metrics, inference benchmarks, and real HTTP load.
 The [deployment and operations exercise](category_05_deployment_and_operations/README.md)
 runs the API and worker in containers with migration history, health checks,
-local alerts, and a verified approval smoke test.
+local alerts, and a verified approval smoke test. Optional portable OIDC
+authentication and durable JSON webhook delivery are covered by local HTTP
+integration fixtures.
 
 The working v0.1 sentiment application remains under
 `src/everyday_agents/agents/sentiment/`. Its local tests and packaging checks do

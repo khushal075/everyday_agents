@@ -16,7 +16,8 @@ and evaluate local alert rules.
 | `run_worker.py` | Poll for jobs, publish heartbeats, and handle graceful shutdown. |
 | `healthcheck.py` | Check API responsiveness, database readability, and worker heartbeat/PID. |
 | `alerts.json` | Configure alert thresholds and the observation window. |
-| `check_alerts.py` | Print state and telemetry alerts with distinct clear/alert/error exit codes. |
+| `check_alerts.py` | Evaluate alerts and optionally deliver them to a configured webhook. |
+| `notifications.py` | Persist webhook delivery IDs, payloads, and bounded retry attempts. |
 | `smoke_test.py` | Submit, approve, and verify a job through the running HTTP API. |
 | `runbook.md` | Describe backup, restore, upgrades, rollback, and recovery. |
 
@@ -102,6 +103,111 @@ and notification destination when those are available.
 | Alert check | 0 clear, 1 active alerts, 2 unable to evaluate |
 | Migration | 0 applied/already applied, 1 failed |
 
+## Portable identity-provider authentication
+
+The API also accepts OIDC bearer access tokens. Configure these settings in the
+local environment file, then recreate the API container:
+
+```dotenv
+FEEDBACK_OIDC_ISSUER=https://your-issuer.example/realm
+FEEDBACK_OIDC_AUDIENCE=your-feedback-api
+FEEDBACK_OIDC_JWKS_URL=https://your-issuer.example/realm/jwks
+FEEDBACK_OIDC_TENANT_CLAIM=tenant_id
+FEEDBACK_OIDC_PERMISSIONS_CLAIM=scope
+FEEDBACK_CREDENTIALS='{}'
+```
+
+Use the exact issuer and JWKS URL published by your provider. The audience
+identifies this API and may differ from the login application's client ID.
+The provider must issue RS256-signed access tokens with `iss`, `aud`, `sub`,
+`exp`, `iat`, and a nonempty tenant claim.
+
+The tenant claim must be assigned by trusted provider policy. Users must not be
+able to edit their own tenant membership. Configure top-level permission claims
+as either space-separated scopes or a string list. Supported permissions are
+`submit_feedback`, `read_job`, `approve_action`, and `cancel_job`.
+Provider-specific nested roles need a claim mapper to this top-level format.
+
+```bash
+docker compose up -d --force-recreate api
+```
+
+Supply `Authorization: Bearer ...` on HTTP requests. API-key callers continue
+to work when configured. A request must supply one credential. Setting
+`FEEDBACK_CREDENTIALS` to an empty object disables API-key identities.
+
+For a bearer-authenticated deployment smoke test, set `FEEDBACK_BEARER_TOKEN`
+in the environment file and leave `FEEDBACK_API_KEY` empty. The token needs
+all submission, read, and approval permissions. Acquire it using your provider's
+supported login or OAuth flow.
+
+```bash
+docker compose run --rm --no-deps smoke
+```
+
+Signature algorithm, issuer, API audience, expiry, issue time, and subject are
+verified before tenant access. Signing keys are cached. A key-fetch outage with
+no usable cached key returns 503. Invalid tokens return 401 and insufficient
+permissions return 403.
+
+## Deliver alerts to a webhook
+
+Configure the destination and optional receiver credential:
+
+```dotenv
+FEEDBACK_ALERT_WEBHOOK_URL=https://your-receiver.example/alerts
+FEEDBACK_ALERT_WEBHOOK_TOKEN=your-receiver-token
+```
+
+Delivery is explicitly enabled by `--notify`:
+
+```bash
+docker compose run --rm --no-deps ops python -m production.category_05_deployment_and_operations.check_alerts --notify
+```
+
+The receiver gets JSON containing `delivery_id`, `created_at`, and `alerts`.
+The delivery ID is also sent in `Idempotency-Key` and `X-Delivery-ID` headers.
+An optional bearer credential authenticates the webhook request. Redirects are
+refused, and HTTPS is required for remote destinations.
+
+Each delivery reserves at most three attempts, including attempts across process
+restarts. HTTP 429, 5xx responses, and network failures are retried. Other 4xx
+responses fail immediately. Each HTTP request has a five-second timeout.
+Delivery metadata is saved in `/data/notifications.sqlite3` on the runtime volume.
+
+Use `--delivery-id` to repeat a known delivery with the same destination and
+alert payload. A delivery already confirmed as sent causes no new request:
+
+```bash
+docker compose run --rm --no-deps ops python -m production.category_05_deployment_and_operations.check_alerts --notify --delivery-id incident-123
+```
+
+New invocations without an explicit ID create new deliveries. This provides no
+automatic incident grouping or alert suppression. If a request reaches the
+receiver but its response is lost, a retry can arrive with the same ID. The
+receiver must enforce idempotency. A crash after the final request but before
+confirmation needs reconciliation using the receiver's records.
+
+Alerts still return exit code 1 after successful delivery. Evaluation or delivery
+failure returns 2. A clear result sends no notification. Repeating a delivery ID
+with changed alert details is rejected.
+
+## Verify the portable integrations locally
+
+```bash
+uv run python -m unittest tests.integration.test_external_integrations -v
+```
+
+The tests use an actual loopback JWKS server, ephemeral RSA keys, a real HTTP
+webhook receiver, and an API/worker process smoke test. They cover invalid
+signatures and claims, tenant isolation, permission denial, provider outage,
+retry identity, connection drops, redirect refusal, and persisted retry limits.
+
+The tests enable HTTP only for explicit loopback fixtures. Remote provider and
+receiver configuration still requires HTTPS. These checks exercise portable
+protocol adapters with local fixtures. A particular hosted provider and
+notification endpoint need live credentials and a separate verification run.
+
 ## Stop and restart
 
 ```bash
@@ -147,7 +253,7 @@ Apple Silicon:
 
 | Check | Result |
 | --- | --- |
-| Full Python suite | 120 tests passed, including six operations regression tests. |
+| Full Python suite | 132 tests passed, including operations and portable integration checks. |
 | Locked container build | Passed; the runtime uses UID 10001. |
 | Compose startup and service health | Passed. |
 | Authenticated submission, approval, and completion | Passed through the actual container API. |
@@ -155,6 +261,8 @@ Apple Silicon:
 | SQLite backup and restore | Integrity and foreign-key checks passed; smoke passed after restore. |
 | Alert outcomes | Clear returned 0, an injected old job returned 1, and missing data returned 2. |
 | Environment-file parsing | Credential mapping and tools profile validated. |
+| Portable OIDC | Loopback JWKS verification and a bearer-authenticated API/worker process smoke test passed. |
+| JSON webhook | Local receiver delivery, ambiguous connection retry, redirect refusal, and persistent retry limits passed. |
 
 The GitHub Actions workflow is added for future pushes. These local results
 verify its component commands; a hosted workflow run will provide CI evidence.
@@ -164,7 +272,7 @@ responsiveness and recent worker progress. Docker reports unhealthy services,
 and the restart policy restarts exited processes. An unhealthy but running
 process needs operator or orchestrator intervention.
 
-External identity providers, TLS termination, remote notification delivery,
+Provider-specific login, TLS termination, remote endpoint verification,
 distributed database failover, and multi-host orchestration remain deployment
 integration work. Model inference and review creation still use the existing
 local sentiment baseline and SQLite workflow.
