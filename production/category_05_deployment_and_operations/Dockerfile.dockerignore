@@ -1,0 +1,17 @@
+**
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!src/**
+!production/
+!production/**
+**/__pycache__/
+**/*.pyc
+**/.env
+**/.env.*
+**/*.sqlite
+**/*.sqlite3
+**/worker-heartbeat.json
+**/*.db
+**/*.log

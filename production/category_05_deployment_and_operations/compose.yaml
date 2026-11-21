@@ -1,0 +1,76 @@
+name: everyday-agents
+
+x-runtime: &runtime
+  image: ${EVERYDAY_AGENTS_IMAGE:-everyday-agents:local}
+  build:
+    context: ../..
+    dockerfile: production/category_05_deployment_and_operations/Dockerfile
+  environment: &environment
+    FEEDBACK_DB_PATH: /data/feedback.sqlite3
+    FEEDBACK_TELEMETRY_DB: /data/telemetry.sqlite3
+  volumes:
+    - runtime-data:/data
+
+services:
+  migrate:
+    <<: *runtime
+    command: ["python", "-m", "production.category_05_deployment_and_operations.migrate"]
+    restart: "no"
+
+  api:
+    <<: *runtime
+    environment:
+      <<: *environment
+      FEEDBACK_CREDENTIALS: ${FEEDBACK_CREDENTIALS:-{}}
+    ports:
+      - "127.0.0.1:${FEEDBACK_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-m", "production.category_05_deployment_and_operations.healthcheck", "api"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  worker:
+    <<: *runtime
+    environment:
+      <<: *environment
+      FEEDBACK_WORKER_HEARTBEAT: /tmp/worker-heartbeat.json
+    command: ["python", "-m", "production.category_05_deployment_and_operations.run_worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-m", "production.category_05_deployment_and_operations.healthcheck", "worker"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+  smoke:
+    <<: *runtime
+    profiles: ["tools"]
+    environment:
+      <<: *environment
+      FEEDBACK_API_KEY: ${FEEDBACK_API_KEY:-}
+    command: ["python", "-m", "production.category_05_deployment_and_operations.smoke_test", "--url", "http://api:8000"]
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+
+  ops:
+    <<: *runtime
+    profiles: ["tools"]
+    command: ["python", "-m", "production.category_05_deployment_and_operations.check_alerts"]
+
+volumes:
+  runtime-data:
