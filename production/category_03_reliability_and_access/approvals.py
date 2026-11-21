@@ -3,6 +3,7 @@ Bind an approval to an exact action and its serialization parameters.
 """
 import json
 import sqlite3
+from time import perf_counter
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Literal, Mapping, Optional
@@ -10,6 +11,7 @@ from uuid import uuid4
 
 from production.category_03_reliability_and_access.security import AccessPolicy, Principal
 from pathlib import Path
+from production.category_04_evaluation_and_observability.telemetry import Telemetry
 
 ActionValue = str | int | float | bool | None
 
@@ -130,9 +132,9 @@ class ApprovalPolicy:
 class ApprovalStore:
     """Persist immutable proposals and decisions in the workflow database."""
 
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(self, database_path: str | Path, *, telemetry: Telemetry | None = None) -> None:
         from production.store import FeedbackStore
-        self.store = FeedbackStore(database_path)
+        self.store = FeedbackStore(database_path, telemetry=telemetry)
 
     @staticmethod
     def write_request(
@@ -215,6 +217,7 @@ class ApprovalStore:
 
     def save_decision(self, approval: ApprovalRecord) -> None:
         """Commit a decision and resume or reject its waiting job atomically."""
+        started = perf_counter()
         request = approval.request
         with self.store._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
@@ -262,3 +265,8 @@ class ApprovalStore:
                  None if approved else "Action rejected by approver.",
                  row["job_id"], request.tenant_id),
             )
+        self.store._event(
+            "store.approved" if approved else "store.approval_rejected",
+            row["job_id"], started,
+            outcome="passed" if approved else "failed",
+        )

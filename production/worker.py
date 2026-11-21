@@ -3,8 +3,9 @@ Claim and process one feedback job from the SQLite queue.
 """
 
 import os
-import sys
+from contextlib import AbstractContextManager
 from pathlib import Path
+from time import perf_counter
 from everyday_agents.agents.sentiment.agent import create_agent
 from production.category_03_reliability_and_access.recovery import RecoveryPolicy
 from production.category_03_reliability_and_access.approvals import (
@@ -13,6 +14,7 @@ from production.category_03_reliability_and_access.approvals import (
 from production.category_03_reliability_and_access.security import (
     AccessDenied, AccessPolicy, Principal,
 )
+from production.category_04_evaluation_and_observability.telemetry import EventOutcome
 from production.store import FeedbackStore, JobClaim, LeaseLost
 
 
@@ -48,6 +50,7 @@ class FeedbackWorker:
         try:
             return self._process(claim)
         except LeaseLost as error:
+            self._event("worker.lease_lost", claim, perf_counter(), outcome="failed")
             print(f"Lease lost for job {claim.job.job_id}: {error}")
             return 1
 
@@ -55,11 +58,14 @@ class FeedbackWorker:
         """
         Run the agent and save the result using the workers claim.
         """
+        started = perf_counter()
         job = claim.job
 
         try:
-            prediction = self.agent.predictor.predict(job.feedback_text)
-            decision = self.agent.policy.decide(prediction)
+            with self._measure("worker.prediction", claim):
+                prediction = self.agent.predictor.predict(job.feedback_text)
+            with self._measure("worker.decision", claim):
+                decision = self.agent.policy.decide(prediction)
         except Exception as error:
             return self._fail_job(
                 claim=claim,
@@ -76,9 +82,10 @@ class FeedbackWorker:
         access = AccessPolicy()
         principal = Principal("feedback-worker", job.tenant_id, self.tool_permissions)
         try:
-            access.require(
-                principal, resource_tenant_id=job.tenant_id, permission=f"execute:{action}",
-            )
+            with self._measure("worker.permission", claim):
+                access.require(
+                    principal, resource_tenant_id=job.tenant_id, permission=f"execute:{action}",
+                )
             proposal = self.approvals.get_request(f"{job.job_id}:review", job.tenant_id)
             if job.approval_required and (action == "prepare_review" or proposal is not None):
                 request = ActionRequest.create(
@@ -90,18 +97,22 @@ class FeedbackWorker:
                 approval = self.approvals.get_decision(request.operation_id, job.tenant_id)
                 if approval is None:
                     self.store.await_approval(claim, action, decision.reason)
+                    self._event("worker.awaiting_approval", claim, started)
                     print(f"Job {job.job_id} is awaiting approval.")
                     return 0
-                ApprovalPolicy(access).require(request, approval)
-            self.store.complete(
-                job_id=job.job_id,
-                action=action,
-                reason=decision.reason,
-                claim_token=claim.token,
-            )
+                with self._measure("worker.approval", claim):
+                    ApprovalPolicy(access).require(request, approval)
+            with self._measure("worker.execution", claim):
+                self.store.complete(
+                    job_id=job.job_id,
+                    action=action,
+                    reason=decision.reason,
+                    claim_token=claim.token,
+                )
         except (ApprovalRequired, AccessDenied) as error:
             return self._fail_job(claim, str(error))
 
+        self._event("worker.completed", claim, started)
         print(f"Completed job {job.job_id} with action {action}")
         return 0
 
@@ -109,6 +120,7 @@ class FeedbackWorker:
         self, claim: JobClaim, error: str, *, retryable: bool = False,
     ) -> int:
         """Schedule a retry or persist an escalated failure."""
+        started = perf_counter()
         decision = self.recovery.decide(
             claim.attempt, retryable=retryable, cancelled=False,
         )
@@ -116,6 +128,7 @@ class FeedbackWorker:
             self.store.schedule_retry(
                 claim=claim, error=error, delay_seconds=decision.delay_seconds,
             )
+            self._event("worker.retry_scheduled", claim, started, outcome="failed")
             print(
                 f"Job {claim.job.job_id} scheduled for retry "
                 f"in {decision.delay_seconds} seconds."
@@ -128,8 +141,33 @@ class FeedbackWorker:
             claim_token=claim.token,
             reason=f"Escalated: {decision.reason}",
         )
+        self._event("worker.escalated", claim, started, outcome="failed")
         print(f"Job {claim.job.job_id} escalated: {decision.reason}")
         return 1
+
+    def _measure(self, stage: str, claim: JobClaim) -> AbstractContextManager[None]:
+        """
+        - Measure one worker stage using the persistent job as its run ID.
+        - Include tenant and attempt information in every stage event.
+        """
+        return self.store.telemetry.measure(
+            run_id=claim.job.job_id, job_id=claim.job.job_id,
+            tenant_id=claim.job.tenant_id, attempt=claim.attempt, stage=stage,
+        )
+
+    def _event(
+        self, stage: str, claim: JobClaim, started: float, *, outcome: EventOutcome = "passed",
+    ) -> None:
+        """
+        - Record a worker outcome after its state transition commits.
+        - Keep telemetry failures from changing the job outcome.
+        """
+        self.store.telemetry.safe_emit(
+            run_id=claim.job.job_id, job_id=claim.job.job_id,
+            tenant_id=claim.job.tenant_id, attempt=claim.attempt,
+            stage=stage, outcome=outcome,
+            duration_ms=(perf_counter() - started) * 1000,
+        )
 
 
 def main() -> int:

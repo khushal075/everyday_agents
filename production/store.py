@@ -8,7 +8,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Literal, Optional
+from time import perf_counter
 from uuid import uuid4
+from production.category_04_evaluation_and_observability.telemetry import EventOutcome, Telemetry
 
 JobStatus = Literal["queued", "running", "awaiting_approval", "completed", "failed"]
 FeedbackAction = Literal["record", "prepare_review"]
@@ -66,8 +68,11 @@ class FeedbackStore:
     """
     Give the api and worker access to the same SQLite database.
     """
-    def __init__(self, database_path: str | Path) -> None:
+    def __init__(
+        self, database_path: str | Path, *, telemetry: Telemetry | None = None,
+    ) -> None:
         self.database_path = Path(database_path)
+        self.telemetry = telemetry if telemetry is not None else Telemetry.from_environment()
 
     @contextmanager
     def _connection(self) -> Iterator[sqlite3.Connection]:
@@ -95,6 +100,7 @@ class FeedbackStore:
         :param feedback_text:
         :return:
         """
+        started = perf_counter()
         if not feedback_text.strip():
             raise ValueError("Feedback text must not be blank")
 
@@ -110,6 +116,7 @@ class FeedbackStore:
                     (?, ?, ?, ?)
                 """, (job_id, feedback_text, tenant_id, approval_required)
             )
+        self._event("store.queued", job_id, started)
         return job_id
 
     def get_job(self, job_id: str, tenant_id: str = "local") -> Optional[FeedbackJob]:
@@ -147,6 +154,7 @@ class FeedbackStore:
         self, lease_seconds: float = 30.0, *, max_attempts: int = 3,
     ) -> JobClaim | None:
         """Claim a queued job or reclaim a job whose lease expired."""
+        started = perf_counter()
         if not math.isfinite(lease_seconds) or lease_seconds <= 0:
             raise ValueError("lease_seconds must be finite and positive.")
 
@@ -161,7 +169,7 @@ class FeedbackStore:
             ).fetchone()[0]
 
             # Expired claims at the attempt limit require human review.
-            connection.execute(
+            exhausted = connection.execute(
                 """
                 UPDATE feedback_jobs
                 SET status = 'failed',
@@ -175,10 +183,23 @@ class FeedbackStore:
                       status = 'queued'
                       OR (status = 'running' AND lease_expires_at <= ?)
                   )
+                RETURNING job_id
                 """,
                 (max_attempts, now),
-            )
+            ).fetchall()
 
+            previous = connection.execute(
+                """
+                SELECT status FROM feedback_jobs
+                WHERE cancellation_requested = 0 AND attempt_count < ?
+                  AND (
+                      (status = 'queued' AND retry_at <= ?)
+                      OR (status = 'running' AND lease_expires_at <= ?)
+                  )
+                ORDER BY created_at, job_id LIMIT 1
+                """,
+                (max_attempts, now, now),
+            ).fetchone()
             rows = connection.execute(
                 """
                 UPDATE feedback_jobs
@@ -203,10 +224,15 @@ class FeedbackStore:
                 (token, now + lease_seconds, max_attempts, now, now),
             ).fetchall()
 
+        for exhausted_job in exhausted:
+            self._event("store.escalated", exhausted_job["job_id"], started, outcome="failed")
         if not rows:
             return None
 
         row = rows[0]
+        self._event("store.claimed", row["job_id"], started, attempt=row["attempt_count"])
+        if previous is not None and previous["status"] == "running":
+            self._event("store.reclaimed", row["job_id"], started, attempt=row["attempt_count"])
         return JobClaim(
             job=feedback_job(row),
             token=token,
@@ -224,6 +250,7 @@ class FeedbackStore:
         """
         Save the decision and any review item in one transaction.
         """
+        started = perf_counter()
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = self._owned_job(connection, job_id, claim_token)
@@ -279,11 +306,13 @@ class FeedbackStore:
                         (?)
                     """, (job_id,)
                 )
+        self._event("store.completed", job_id, started)
 
     def schedule_retry(
         self, claim: JobClaim, error: str, delay_seconds: float,
     ) -> None:
         """Release an owned job and persist its next eligible time."""
+        started = perf_counter()
         if not math.isfinite(delay_seconds) or delay_seconds < 0:
             raise ValueError("delay_seconds must be finite and nonnegative.")
 
@@ -308,6 +337,7 @@ class FeedbackStore:
             )
             if result.rowcount != 1:
                 raise LeaseLost("The worker no longer owns this job.")
+        self._event("store.retry_scheduled", claim.job.job_id, started)
 
     def fail(
         self, job_id: str, error: str, *, claim_token: str,
@@ -316,6 +346,7 @@ class FeedbackStore:
         """
         Mark a running job as failed and save the error.
         """
+        started = perf_counter()
         with self._connection() as connection:
             result = connection.execute(
                 """
@@ -339,6 +370,7 @@ class FeedbackStore:
 
             if result.rowcount != 1:
                 raise LeaseLost("The worker no longer owns this job.")
+        self._event("store.failed", job_id, started, outcome="failed")
 
     def _owned_job(
         self, connection: sqlite3.Connection, job_id: str, token: str,
@@ -360,6 +392,7 @@ class FeedbackStore:
 
     def await_approval(self, claim: JobClaim, action: str, reason: str) -> None:
         """Save a proposal and release the lease in the same transaction."""
+        started = perf_counter()
         from production.category_03_reliability_and_access.approvals import (
             ActionRequest, ApprovalStore,
         )
@@ -384,9 +417,11 @@ class FeedbackStore:
                 """,
                 (action, reason, claim.job.job_id),
             )
+        self._event("store.awaiting_approval", claim.job.job_id, started)
 
     def cancel(self, job_id: str, tenant_id: str) -> bool:
         """Cancel pending work and revoke any current worker claim."""
+        started = perf_counter()
         with self._connection() as connection:
             result = connection.execute(
                 """
@@ -400,4 +435,31 @@ class FeedbackStore:
                 """,
                 (job_id, tenant_id),
             )
+        if result.rowcount == 1:
+            self._event("store.cancelled", job_id, started)
         return result.rowcount == 1
+
+    def _event(
+        self, stage: str, job_id: str, started: float, *,
+        attempt: int | None = None, outcome: EventOutcome = "passed",
+    ) -> None:
+        """
+        - Emit a committed state transition with job correlation fields.
+        - Read metadata after the business transaction has closed.
+        - Preserve the business result if telemetry metadata cannot be read.
+        """
+        duration_ms = (perf_counter() - started) * 1000
+        try:
+            with self._connection() as connection:
+                row = connection.execute(
+                    "SELECT tenant_id, attempt_count FROM feedback_jobs WHERE job_id = ?",
+                    (job_id,),
+                ).fetchone()
+        except sqlite3.Error:
+            return
+        if row is not None:
+            self.telemetry.safe_emit(
+                run_id=job_id, job_id=job_id, tenant_id=row["tenant_id"],
+                stage=stage, outcome=outcome, duration_ms=duration_ms,
+                attempt=attempt if attempt is not None else max(1, row["attempt_count"]),
+            )
