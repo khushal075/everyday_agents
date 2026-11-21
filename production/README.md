@@ -1,47 +1,74 @@
-# Phase 2: production behaviour and infrastructure
+# Phase 2 · Production behavior and infrastructure
 
-The [workflow runtime exercise](01_workflow_runtime/README.md) runs locally
-with a feedback API, a separate worker, and a shared SQLite database. The
-[policy routing exercise](category_02_models_retrieval_and_tools/README.md)
-uses scripted model responses and local tools. The
-[reliability and access exercises](category_03_reliability_and_access/README.md)
-verify leases, retry limits, tenant access, durable approvals, and cancellation.
-The [evaluation and observability exercises](category_04_evaluation_and_observability/README.md)
-add component tracing, metrics, inference benchmarks, and real HTTP load.
-The [deployment and operations exercise](category_05_deployment_and_operations/README.md)
-runs the API and worker in containers with migration history, health checks,
-local alerts, and a verified approval smoke test. Optional portable OIDC
-authentication and durable JSON webhook delivery are covered by local HTTP
-integration fixtures.
+Follow one feedback application from HTTP submission to a verified outcome.
+The API persists jobs in SQLite. A separate worker predicts sentiment, chooses
+an action, enforces permissions and approval, and commits the result.
 
-The working v0.1 sentiment application remains under
-`src/everyday_agents/agents/sentiment/`. Its local tests and packaging checks do
-not establish distributed reliability, production model quality, or deployment
-readiness.
+## Learning sequence
 
-## Planned scope
+| Category | Run and observe |
+| --- | --- |
+| [01 · Workflow runtime](01_workflow_runtime/README.md) | Submit feedback with the worker offline and process the saved job later. |
+| [02 · Models, retrieval, and tools](category_02_models_retrieval_and_tools/README.md) | Retrieve policy evidence, validate recommendations, and exercise scripted failures. |
+| [03 · Reliability and access](category_03_reliability_and_access/README.md) | Recover expired leases, reject stale owners, bound retries, enforce tenant access, and persist approval or cancellation. |
+| [04 · Evaluation and observability](category_04_evaluation_and_observability/README.md) | Trace actual component events, summarize metrics, and measure HTTP load and model inference. |
+| [05 · Deployment and operations](category_05_deployment_and_operations/README.md) | Build containers, apply tracked migrations, check health, run an approval smoke test, and practice backup/restore. |
 
-After the Phase 1 concepts are understood, build one integrated reference system
-and demonstrate its operational behaviour with real processes and integrations:
+## Start with isolated exercises
 
-- Persistent state, checkpoints, restarts, and recovery after partial execution.
-- Concurrent workers, stable operation IDs, and duplicate-side-effect prevention.
-- Durable approval tied to the exact proposed action and its parameters.
-- Authentication, tenant isolation, scoped data access, and tool permissions.
-- Real retrieval/model/tool integrations, with untrusted-content boundaries.
-- Timeouts, retries, cancellation, execution/cost limits, and escalation.
-- Traces, task evaluations, monitoring, and configuration/model versioning.
-- Reproducible deployment and documented failure/recovery exercises.
+From the repository root:
 
-Create application, deployment, infrastructure, and scenario files when their
-first implementation is ready. Reuse or extend `src/everyday_agents/` for shared
-Python functionality; avoid duplicating its implementation in this directory.
+```bash
+uv sync --locked
+uv run python -m production.01_workflow_runtime.restart_and_resume
+uv run python -m production.category_03_reliability_and_access.crash_and_retry
+uv run python -m production.category_03_reliability_and_access.permissions_and_approval
+```
 
-## Evidence required
+Each exercise initializes a temporary workflow database. Category READMEs provide
+the remaining commands, expected results, and injected failure descriptions.
 
-For each behaviour, record the environment, exact run command, injected failure,
-expected result, observed result, and remaining limitations. A simulated service
-is not a tested external integration. Do not describe an exercise as verified
-until it has actually run.
+For the persistent service, follow the
+[Category 05 setup](category_05_deployment_and_operations/README.md). It configures
+credentials, runs migrations before startup, and mounts persistent data.
+Operational recovery commands are in the [runbook](category_05_deployment_and_operations/runbook.md).
 
-Track those boundaries in the [coverage matrix](../docs/coverage-matrix.md).
+## Implemented behavior
+
+- Persistent jobs and transactional SQLite review creation.
+- Expiring leases, current-owner tokens, bounded retries, and escalation reasons.
+- Tenant-scoped API access and worker tool permissions.
+- Immutable action proposals and durable approval decisions.
+- Cancellation that revokes pending work and worker ownership.
+- Structured component events, stage metrics, and distinct completed-job counts.
+- Real local HTTP service-load measurements and model batching benchmarks.
+- Tracked migrations, non-root Docker services, health checks, and CI configuration.
+- Local alert evaluation and optional durable JSON webhook delivery.
+- Optional OIDC bearer authentication using configured signing keys.
+
+The production worker reuses the sentiment predictor and decision policy in
+`src/everyday_agents/agents/sentiment/`. Category 02 demonstrates a separate
+retrieval workflow with scripted model responses and an in-memory tool.
+
+## Verification
+
+The local suite passed 132 tests on 21 November 2026. Container checks covered
+startup, API and worker health, authenticated approval and completion,
+restart persistence, backup/restore, and alert outcomes.
+
+OIDC and webhook integration tests use actual loopback HTTP fixtures. They
+verify signed-token claims, tenant isolation, permission denial, provider
+unavailability, idempotency headers, connection-drop retries, and persisted
+attempt limits. A real-process smoke test also verifies bearer authentication.
+
+## Remaining integration boundaries
+
+The reference deployment uses a single host and SQLite. Real retrieval and
+external model/tool execution still need to be connected to the persistent
+worker. Hosted identity providers and notification destinations require live
+configuration and verification.
+
+Telemetry delivery is best effort. External webhook receivers enforce
+idempotency for repeated delivery IDs. Escalation records a failed job and reason.
+Recurring alert scheduling, remote notification formatting, dashboards, TLS
+termination, and multi-host orchestration depend on the deployment environment.
