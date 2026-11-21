@@ -1,0 +1,9 @@
+{
+  "window_seconds": 300,
+  "minimum_events": 5,
+  "failure_rate": 0.2,
+  "api_p95_ms": 500,
+  "queued_age_seconds": 120,
+  "expired_lease_grace_seconds": 30,
+  "approval_age_seconds": 86400
+}
