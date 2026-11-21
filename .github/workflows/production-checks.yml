@@ -1,0 +1,63 @@
+name: production checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  COMPOSE_FILE: production/category_05_deployment_and_operations/compose.yaml
+  COMPOSE_PROJECT_NAME: category5-ci-${{ github.run_id }}
+  EVERYDAY_AGENTS_IMAGE: everyday-agents:ci
+  FEEDBACK_PORT: "18090"
+
+jobs:
+  deployment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: '0.12.23'
+          python-version: '3.12'
+          enable-cache: true
+      - name: Install and test
+        run: |
+          uv sync --locked
+          uv run --locked python -m unittest discover -s tests -q
+      - name: Configure an ephemeral exercise credential
+        run: |
+          uv run python - <<'PY'
+          import json
+          import os
+          import secrets
+          key = secrets.token_urlsafe(32)
+          print(f"::add-mask::{key}")
+          credentials = {key: {
+              "subject_id": "ci-operator",
+              "tenant_id": "local",
+              "permissions": ["submit_feedback", "read_job", "approve_action", "cancel_job"],
+          }}
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write(f"FEEDBACK_API_KEY={key}\n")
+              output.write("FEEDBACK_CREDENTIALS=" + json.dumps(credentials) + "\n")
+          PY
+      - name: Build locked runtime
+        run: docker compose build
+      - name: Start services and wait for health
+        run: docker compose up -d --wait --wait-timeout 90 api worker
+      - name: Verify deployed approval workflow
+        run: docker compose run --rm --no-deps smoke
+      - name: Check worker health
+        run: docker compose exec -T worker python -m production.category_05_deployment_and_operations.healthcheck worker
+      - name: Deployment diagnostics
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --no-color --tail 100
+      - name: Remove isolated CI services and data
+        if: always()
+        run: docker compose down --volumes --remove-orphans
