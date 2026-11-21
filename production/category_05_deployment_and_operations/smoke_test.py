@@ -18,12 +18,13 @@ class SmokeTest:
     - Bound each wait and fail when a job enters an unexpected state.
     """
 
-    def __init__(self, url: str, api_key: str, timeout: float) -> None:
+    def __init__(self, url: str, api_key: str, timeout: float, bearer_token: str = "") -> None:
         """
         - Configure the API address, credential, and wait timeout.
         """
         self.url = url.rstrip("/")
         self.api_key = api_key
+        self.bearer_token = bearer_token
         self.timeout = timeout
 
     def request(self, path: str, body: dict | None = None) -> dict:
@@ -31,10 +32,15 @@ class SmokeTest:
         - Send an authenticated JSON request.
         - Use POST when a body is supplied, otherwise use GET.
         """
+        headers = {"Content-Type": "application/json"}
+        if self.bearer_token:
+            headers["Authorization"] = f"Bearer {self.bearer_token}"
+        else:
+            headers["X-API-Key"] = self.api_key
         request = Request(
             self.url + path,
             data=json.dumps(body).encode("utf-8") if body is not None else None,
-            headers={"Content-Type": "application/json", "X-API-Key": self.api_key},
+            headers=headers,
         )
         with urlopen(request, timeout=min(5, self.timeout)) as response:
             return json.load(response)
@@ -92,10 +98,11 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=30)
     args = parser.parse_args()
     key = os.environ.get("FEEDBACK_API_KEY", "")
-    if not key or not math.isfinite(args.timeout) or args.timeout <= 0:
-        parser.error("Set FEEDBACK_API_KEY and supply a positive finite timeout.")
+    bearer = os.environ.get("FEEDBACK_BEARER_TOKEN", "")
+    if bool(key) == bool(bearer) or not math.isfinite(args.timeout) or args.timeout <= 0:
+        parser.error("Set exactly one API key or bearer token and a positive finite timeout.")
     try:
-        job_id = SmokeTest(args.url, key, args.timeout).run()
+        job_id = SmokeTest(args.url, key, args.timeout, bearer).run()
     except (OSError, ValueError, TypeError, KeyError) as error:
         print(f"Smoke test failed: {error}")
         return 1
