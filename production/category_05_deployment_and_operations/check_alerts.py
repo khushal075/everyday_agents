@@ -16,6 +16,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from production.category_04_evaluation_and_observability.metrics import MetricsAggregator
+from production.category_05_deployment_and_operations.notifications import DeliveryFailed, WebhookNotifier
 
 
 class AlertRules(BaseModel):
@@ -132,6 +133,8 @@ def main() -> int:
         os.environ.get("FEEDBACK_TELEMETRY_DB", "telemetry.sqlite3"),
     ))
     parser.add_argument("--rules", type=Path, default=Path(__file__).with_name("alerts.json"))
+    parser.add_argument("--notify", action="store_true")
+    parser.add_argument("--delivery-id", help="Reuse an existing delivery ID for the same alert payload.")
     args = parser.parse_args()
     try:
         rules = AlertRules.model_validate_json(args.rules.read_text(encoding="utf-8"))
@@ -139,7 +142,19 @@ def main() -> int:
     except (OSError, ValueError, TypeError, sqlite3.Error) as error:
         print(json.dumps({"status": "check_failed", "error": str(error)}))
         return 2
-    print(json.dumps({"status": "alert" if alerts else "clear", "alerts": alerts}, indent=2))
+    report = {"status": "alert" if alerts else "clear", "alerts": alerts}
+    if alerts and args.notify:
+        try:
+            report["delivery_id"] = WebhookNotifier.from_environment().deliver(
+                alerts, args.delivery_id,
+            )
+            report["notification"] = "sent"
+        except (DeliveryFailed, OSError, ValueError, sqlite3.Error) as error:
+            report["notification"] = "failed"
+            report["error"] = str(error)
+            print(json.dumps(report, indent=2))
+            return 2
+    print(json.dumps(report, indent=2))
     return 1 if alerts else 0
 
 
