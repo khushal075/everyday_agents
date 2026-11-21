@@ -8,7 +8,7 @@ from typing import Literal
 from time import perf_counter
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from production.category_03_reliability_and_access.approvals import (
@@ -18,6 +18,9 @@ from production.category_03_reliability_and_access.security import (
     AccessDenied, AccessPolicy, AuthenticationFailed, CredentialResolver, Principal,
 )
 from production.category_04_evaluation_and_observability.telemetry import Telemetry
+from production.category_03_reliability_and_access.oidc import (
+    IdentityProviderUnavailable, OIDCAuthenticator,
+)
 from production.store import FeedbackJob, FeedbackStore, ReviewRecord
 
 
@@ -58,6 +61,7 @@ class FeedbackAPI:
         credentials: Mapping[str, Principal] | None = None,
         require_approval: bool = True,
         telemetry: Telemetry | None = None,
+        oidc: OIDCAuthenticator | None = None,
     ) -> None:
         self.telemetry = telemetry if telemetry is not None else Telemetry.from_environment()
         self.store = FeedbackStore(database_path, telemetry=self.telemetry)
@@ -65,6 +69,7 @@ class FeedbackAPI:
         self.access = AccessPolicy()
         self.approval_policy = ApprovalPolicy(self.access)
         self.credentials = CredentialResolver(credentials or {})
+        self.oidc = oidc
         self.require_approval = require_approval
         self.app = FastAPI(title="Everyday Agents Feedback API")
         self.app.middleware("http")(self.observe_request)
@@ -98,11 +103,7 @@ class FeedbackAPI:
             error_type = type(error).__name__
             raise
         finally:
-            principal = None
-            try:
-                principal = self.credentials.authenticate(request.headers.get("X-API-Key"))
-            except AuthenticationFailed:
-                pass
+            principal = getattr(request.state, "principal", None)
             job_id = None
             if status_code < 400 and principal is not None:
                 job_id = getattr(request.state, "job_id", None) or request.path_params.get("job_id")
@@ -118,16 +119,35 @@ class FeedbackAPI:
                 error_type=error_type or (f"HTTP{status_code}" if status_code >= 400 else None),
             )
 
-    def _principal(self, api_key: str | None, permission: str) -> Principal:
-        """Authenticate and check the requested permission."""
+    def _principal(self, request: Request, permission: str) -> Principal:
+        """
+        - Authenticate exactly one supplied credential.
+        - Cache the verified identity on this request for telemetry.
+        - Apply the existing tenant-scoped permission policy.
+        """
+        api_key = request.headers.get("X-API-Key")
+        authorization = request.headers.get("Authorization")
         try:
-            principal = self.credentials.authenticate(api_key)
+            if authorization is not None:
+                if api_key is not None:
+                    raise AuthenticationFailed("Supply one authentication credential.")
+                parts = authorization.split()
+                if len(parts) != 2 or parts[0].lower() != "bearer" or self.oidc is None:
+                    raise AuthenticationFailed("A configured bearer credential is required.")
+                principal = self.oidc.authenticate(parts[1])
+            else:
+                principal = self.credentials.authenticate(api_key)
+            request.state.principal = principal
             self.access.require(
                 principal, resource_tenant_id=principal.tenant_id, permission=permission,
             )
             return principal
+        except IdentityProviderUnavailable as error:
+            raise HTTPException(503, str(error)) from error
         except AuthenticationFailed as error:
-            raise HTTPException(401, str(error)) from error
+            raise HTTPException(
+                401, str(error), headers={"WWW-Authenticate": "Bearer"},
+            ) from error
         except AccessDenied as error:
             raise HTTPException(403, str(error)) from error
 
@@ -139,10 +159,10 @@ class FeedbackAPI:
         return job
 
     def submit_feedback(
-        self, request: FeedbackRequest, http_request: Request, x_api_key: str | None = Header(default=None),
+        self, request: FeedbackRequest, http_request: Request,
     ) -> QueuedJob:
         """Save feedback with the tenant derived from the credential."""
-        principal = self._principal(x_api_key, "submit_feedback")
+        principal = self._principal(http_request, "submit_feedback")
         if not request.text.strip():
             raise HTTPException(400, "Feedback text must not be blank.")
         job_id = self.store.enqueue(
@@ -153,10 +173,10 @@ class FeedbackAPI:
         return QueuedJob(job_id=job_id)
 
     def get_job(
-        self, job_id: str, x_api_key: str | None = Header(default=None),
+        self, job_id: str, http_request: Request,
     ) -> JobDetails:
         """Return tenant-owned state and the exact proposed action."""
-        principal = self._principal(x_api_key, "read_job")
+        principal = self._principal(http_request, "read_job")
         job = self._job(job_id, principal)
         review = self.store.get_review(job_id, principal.tenant_id)
         proposal = self.approvals.get_request(f"{job_id}:review", principal.tenant_id)
@@ -164,10 +184,10 @@ class FeedbackAPI:
 
     def decide_approval(
         self, job_id: str, request: ApprovalDecisionRequest,
-        x_api_key: str | None = Header(default=None),
+        http_request: Request,
     ) -> dict[str, str]:
         """Save a decision for the immutable proposal and release waiting work."""
-        principal = self._principal(x_api_key, "approve_action")
+        principal = self._principal(http_request, "approve_action")
         self._job(job_id, principal)
         proposal = self.approvals.get_request(f"{job_id}:review", principal.tenant_id)
         if proposal is None:
@@ -182,10 +202,10 @@ class FeedbackAPI:
         return {"job_id": job_id, "decision": decision.decision}
 
     def cancel_job(
-        self, job_id: str, x_api_key: str | None = Header(default=None),
+        self, job_id: str, http_request: Request,
     ) -> dict[str, str]:
         """Cancel pending work and revoke its worker claim."""
-        principal = self._principal(x_api_key, "cancel_job")
+        principal = self._principal(http_request, "cancel_job")
         self._job(job_id, principal)
         if not self.store.cancel(job_id, principal.tenant_id):
             raise HTTPException(409, "The job is already terminal.")
@@ -208,4 +228,5 @@ def configured_credentials() -> dict[str, Principal]:
 app = FeedbackAPI(
     os.environ.get("FEEDBACK_DB_PATH", "feedback-runtime.sqlite3"),
     credentials=configured_credentials(),
+    oidc=OIDCAuthenticator.from_environment(),
 ).app
