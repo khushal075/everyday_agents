@@ -6,7 +6,11 @@ with a feedback API, a separate worker, and a shared SQLite database. The
 uses scripted model responses and local tools. The
 [reliability and access exercises](category_03_reliability_and_access/README.md)
 verify leases, retry limits, tenant access, durable approvals, and cancellation.
-Further deployment and monitoring exercises are planned.
+The [evaluation and observability exercises](category_04_evaluation_and_observability/README.md)
+add component tracing, metrics, inference benchmarks, and real HTTP load.
+The [deployment and operations exercise](category_05_deployment_and_operations/README.md)
+runs the API and worker in containers with migration history, health checks,
+local alerts, and a verified approval smoke test.
 
 The working v0.1 sentiment application remains under
 `src/everyday_agents/agents/sentiment/`. Its local tests and packaging checks do
