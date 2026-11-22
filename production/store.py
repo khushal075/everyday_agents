@@ -344,6 +344,9 @@ class FeedbackStore:
             plan = FeedbackWorkflow.restore(
                 request, feedback=row["feedback_text"], job_id=row["job_id"], tenant_id=row["tenant_id"],
             )
+            recommendation = plan.recommendation
+            if recommendation is None:
+                raise ValueError("A policy proposal must include a recommendation.")
             ApprovalStore.write_request(connection, row["job_id"], request)
             approval = ApprovalStore.read_decision(connection, request.operation_id, request.tenant_id)
             waiting = bool(row["approval_required"]) and approval is None
@@ -353,7 +356,7 @@ class FeedbackStore:
                         reason = ?, claim_token = NULL, lease_expires_at = NULL,
                         attempt_count = attempt_count - 1, updated_at = CURRENT_TIMESTAMP
                         WHERE job_id = ?""",
-                    (plan.recommendation.reason, row["job_id"]),
+                    (recommendation.reason, row["job_id"]),
                 )
         self._event("store.awaiting_approval" if waiting else "store.proposal_saved", claim.job.job_id, started)
         return waiting
@@ -395,6 +398,8 @@ class FeedbackStore:
                     connection, request.operation_id, request.tenant_id,
                 ))
             recommendation = plan.recommendation
+            if recommendation is None:
+                raise ValueError("A policy review must include a recommendation.")
             connection.execute(
                 """INSERT INTO review_records(job_id, operation_id, route, source, heading, reason)
                    VALUES (?, ?, ?, ?, ?, ?)""",
