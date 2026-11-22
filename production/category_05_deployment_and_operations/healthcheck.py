@@ -25,12 +25,12 @@ def check_database(database_path: Path) -> None:
         connection.execute(
             """
             SELECT tenant_id, approval_required, cancellation_requested,
-                   claim_token, lease_expires_at, retry_at
+                   claim_token, lease_expires_at, retry_at, workflow_mode
             FROM feedback_jobs LIMIT 1
             """
         ).fetchall()
         for table, column in (
-            ("review_records", "job_id"),
+            ("review_records", "operation_id, route, source, heading, reason"),
             ("action_requests", "operation_id"),
             ("approval_records", "approval_id"),
         ):

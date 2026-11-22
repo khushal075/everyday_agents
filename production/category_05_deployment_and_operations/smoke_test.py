@@ -66,7 +66,7 @@ class SmokeTest:
         - Submit feedback, inspect its proposal, and approve it.
         - Confirm the job and review contain the submitted request.
         """
-        text = "This is terrible"
+        text = "This is terrible. I was charged twice for my subscription."
         queued = self.request("/feedback", {"text": text})
         job_id = queued["job_id"]
         waiting = self.wait_for(job_id, "awaiting_approval")
@@ -85,6 +85,12 @@ class SmokeTest:
             or completed["review"]["status"] != "pending_review"
         ):
             raise ValueError("Completed review differs from the expected outcome.")
+        if completed["job"]["workflow_mode"] == "policy":
+            review = completed["review"]
+            if any(review[key] != parameters[key] for key in ("route", "source", "heading", "reason")):
+                raise ValueError("Persistent review differs from the approved policy proposal.")
+            if review["operation_id"] != proposal["operation_id"]:
+                raise ValueError("Review operation differs from the approved proposal.")
         return job_id
 
 

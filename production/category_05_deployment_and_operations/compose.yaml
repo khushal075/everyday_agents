@@ -22,6 +22,7 @@ services:
     <<: *runtime
     environment:
       <<: *environment
+      FEEDBACK_WORKFLOW_MODE: ${FEEDBACK_WORKFLOW_MODE:-sentiment}
       FEEDBACK_CREDENTIALS: ${FEEDBACK_CREDENTIALS:-{}}
       FEEDBACK_OIDC_ISSUER: ${FEEDBACK_OIDC_ISSUER:-}
       FEEDBACK_OIDC_AUDIENCE: ${FEEDBACK_OIDC_AUDIENCE:-}
@@ -48,6 +49,10 @@ services:
     environment:
       <<: *environment
       FEEDBACK_WORKER_HEARTBEAT: /tmp/worker-heartbeat.json
+      FEEDBACK_ROUTING_GENERATOR: ${FEEDBACK_ROUTING_GENERATOR:-ollama}
+      FEEDBACK_ROUTING_MODEL: ${FEEDBACK_ROUTING_MODEL:-}
+      FEEDBACK_OLLAMA_URL: ${FEEDBACK_OLLAMA_URL:-http://host.docker.internal:11434/api/generate}
+      FEEDBACK_MODEL_TIMEOUT: ${FEEDBACK_MODEL_TIMEOUT:-10}
     command: ["python", "-m", "production.category_05_deployment_and_operations.run_worker"]
     depends_on:
       migrate:
