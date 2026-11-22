@@ -16,6 +16,10 @@ from production.category_03_reliability_and_access.security import (
 )
 from production.category_04_evaluation_and_observability.telemetry import EventOutcome
 from production.store import FeedbackStore, JobClaim, LeaseLost
+from production.feedback_workflow import FeedbackWorkflow
+from production.category_02_models_retrieval_and_tools.models import configured_routing_model
+from production.category_02_models_retrieval_and_tools.retrieval import PolicyRetriever
+from production.category_02_models_retrieval_and_tools.tools import PersistentReviewTool
 
 
 class FeedbackWorker:
@@ -24,9 +28,12 @@ class FeedbackWorker:
     """
     def __init__(
         self, store: FeedbackStore, *,
+        workflow: FeedbackWorkflow | None = None,
         tool_permissions: frozenset[str] = frozenset({"execute:record", "execute:prepare_review"}),
     ):
         self.store = store
+        self.workflow = workflow
+        self.review_tool = PersistentReviewTool(store)
         self.tool_permissions = tool_permissions
         self.approvals = ApprovalStore(store.database_path)
         self.agent = create_agent()
@@ -60,6 +67,8 @@ class FeedbackWorker:
         """
         started = perf_counter()
         job = claim.job
+        if job.workflow_mode == "policy":
+            return self._process_policy(claim)
 
         try:
             with self._measure("worker.prediction", claim):
@@ -114,6 +123,74 @@ class FeedbackWorker:
 
         self._event("worker.completed", claim, started)
         print(f"Completed job {job.job_id} with action {action}")
+        return 0
+
+    def _process_policy(self, claim: JobClaim) -> int:
+        """
+        - Restore a saved proposal or retrieve evidence and prepare it once.
+        - Enforce permissions before saving, approving, or executing an action.
+        - Reuse the exact proposal after approval, retry, or worker restart.
+
+        :param claim: Tenant-owned policy job and its active lease.
+        :return: Zero on completion or approval wait; one on failure or retry.
+        """
+        started = perf_counter()
+        job = claim.job
+        completed = False
+        try:
+            saved = self.approvals.get_request(f"{job.job_id}:review", job.tenant_id)
+            if saved is not None:
+                with self._measure("worker.proposal_restored", claim):
+                    plan = FeedbackWorkflow.restore(
+                        saved, feedback=job.feedback_text, job_id=job.job_id, tenant_id=job.tenant_id,
+                    )
+            else:
+                with self._measure("worker.policy_preparation", claim):
+                    if self.workflow is None:
+                        policy_path = Path(os.environ.get("FEEDBACK_POLICY_PATH", str(
+                            Path(__file__).resolve().parent / "category_02_models_retrieval_and_tools/fixtures/support_policy.md"
+                        )))
+                        self.workflow = FeedbackWorkflow(PolicyRetriever(policy_path), configured_routing_model())
+                    plan = self.workflow.prepare(job.feedback_text, job_id=job.job_id, tenant_id=job.tenant_id)
+            action = "prepare_review" if plan.request is not None else "record"
+            with self._measure("worker.permission", claim):
+                AccessPolicy().require(
+                    Principal("feedback-worker", job.tenant_id, self.tool_permissions),
+                    resource_tenant_id=job.tenant_id, permission=f"execute:{action}",
+                )
+            if plan.request is None:
+                # No evidence is an explicit no-review outcome, not a model guess.
+                with self._measure("worker.execution", claim):
+                    self.store.complete(job.job_id, "record", "No matching policy evidence; no review created.", claim_token=claim.token)
+                self._event("worker.no_policy_match", claim, started)
+            else:
+                if self.store.save_policy_request(claim, plan.request):
+                    self._event("worker.awaiting_approval", claim, started)
+                    print(f"Job {job.job_id} is awaiting approval.")
+                    return 0
+                if job.approval_required:
+                    with self._measure("worker.approval", claim):
+                        ApprovalPolicy(AccessPolicy()).require(plan.request, self.approvals.get_decision(
+                            plan.request.operation_id, job.tenant_id,
+                        ))
+                with self._measure("worker.execution", claim):
+                    record = self.review_tool.execute(claim, plan.request)
+                completed = True
+                with self._measure("worker.verification", claim):
+                    if not self.review_tool.verify(claim, plan.request, record):
+                        raise RuntimeError("Persistent review verification failed.")
+        except LeaseLost:
+            raise
+        except Exception as error:
+            current = self.store.get_job(job.job_id, job.tenant_id)
+            if completed or (current is not None and current.status == "completed"):
+                # Execution already committed. Do not retry the business action.
+                self._event("worker.verification_failed", claim, started, outcome="failed")
+                print(f"Job {job.job_id} committed but verification failed: {type(error).__name__}")
+                return 1
+            return self._fail_job(claim, f"{type(error).__name__}: {error}", retryable=isinstance(error, (TimeoutError, ConnectionError)))
+        self._event("worker.completed", claim, started)
+        print(f"Completed policy job {job.job_id} with action {action}")
         return 0
 
     def _fail_job(

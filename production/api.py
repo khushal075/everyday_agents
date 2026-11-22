@@ -21,7 +21,7 @@ from production.category_04_evaluation_and_observability.telemetry import Teleme
 from production.category_03_reliability_and_access.oidc import (
     IdentityProviderUnavailable, OIDCAuthenticator,
 )
-from production.store import FeedbackJob, FeedbackStore, ReviewRecord
+from production.store import FeedbackJob, FeedbackStore, ReviewRecord, WorkflowMode
 
 
 class FeedbackRequest(BaseModel):
@@ -60,6 +60,7 @@ class FeedbackAPI:
         *,
         credentials: Mapping[str, Principal] | None = None,
         require_approval: bool = True,
+        workflow_mode: WorkflowMode = "sentiment",
         telemetry: Telemetry | None = None,
         oidc: OIDCAuthenticator | None = None,
     ) -> None:
@@ -70,6 +71,9 @@ class FeedbackAPI:
         self.approval_policy = ApprovalPolicy(self.access)
         self.credentials = CredentialResolver(credentials or {})
         self.oidc = oidc
+        if workflow_mode not in ("sentiment", "policy"):
+            raise ValueError("workflow_mode must be sentiment or policy.")
+        self.workflow_mode = workflow_mode
         self.require_approval = require_approval
         self.app = FastAPI(title="Everyday Agents Feedback API")
         self.app.middleware("http")(self.observe_request)
@@ -168,6 +172,7 @@ class FeedbackAPI:
         job_id = self.store.enqueue(
             request.text, tenant_id=principal.tenant_id,
             approval_required=self.require_approval,
+            workflow_mode=self.workflow_mode,
         )
         http_request.state.job_id = job_id
         return QueuedJob(job_id=job_id)
@@ -225,8 +230,19 @@ def configured_credentials() -> dict[str, Principal]:
     }
 
 
+def configured_workflow_mode() -> WorkflowMode:
+    """Return the validated server-selected workflow for newly submitted jobs."""
+    mode = os.environ.get("FEEDBACK_WORKFLOW_MODE", "sentiment")
+    if mode == "sentiment":
+        return "sentiment"
+    if mode == "policy":
+        return "policy"
+    raise ValueError("FEEDBACK_WORKFLOW_MODE must be sentiment or policy.")
+
+
 app = FeedbackAPI(
     os.environ.get("FEEDBACK_DB_PATH", "feedback-runtime.sqlite3"),
     credentials=configured_credentials(),
     oidc=OIDCAuthenticator.from_environment(),
+    workflow_mode=configured_workflow_mode(),
 ).app
