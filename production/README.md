@@ -4,6 +4,10 @@ Follow one feedback application from HTTP submission to a verified outcome.
 The API persists jobs in SQLite. A separate worker runs the job's saved sentiment or policy workflow,
 enforces permissions and approval, and commits and verifies the result.
 
+Start with [one customer request](../docs/request-walkthrough.md) for a guided
+walk through behavior, results, and the responsible classes. For the reasons
+behind the design, see [architecture decisions](../docs/adr/README.md).
+
 ## Learning sequence
 
 | Category | Run and observe |

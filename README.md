@@ -1,22 +1,38 @@
 # Everyday Agents
 
-Understand how agents work through **15 runnable Python examples**, then follow
-one feedback agent through persistence, recovery, approval, observability, and
-container deployment.
+A practical learning repository for understanding how AI agents make decisions,
+use tools, and carry work through approval, failure, and recovery.
 
-The project includes a sentiment application with a rules baseline and a trained
-TF-IDF + logistic-regression predictor. The production workflow reuses the
-sentiment predictor and decision policy to process jobs through an API and worker.
+Learn in three connected layers: **understand the idea → structure the
+implementation → operate the system**. Start with a small example, follow the
+reusable Python implementation, then explore the production behavior.
 
-## Start here
+## Choose your starting point
 
-| Goal | Start with |
+| What you want to understand | Start here |
 | --- | --- |
-| Understand agent concepts one at a time | [Phase 1 examples](examples/concepts/README.md) |
-| Run sentiment prediction and training | [Sentiment implementation](src/everyday_agents/agents/sentiment/README.md) |
-| Follow a persistent job through failures and approval | [Phase 2 overview](production/README.md) |
-| Run the containerized application | [Deployment setup](production/category_05_deployment_and_operations/README.md) |
-| Back up, restore, or investigate the service | [Operations runbook](production/category_05_deployment_and_operations/runbook.md) |
+| What happens when an agent receives a task? | [Follow one customer request](docs/request-walkthrough.md) — behavior, results, and optional code links. |
+| How do the individual concepts work? | [Phase 1: 15 standalone examples](examples/concepts/README.md). |
+| How do I structure reusable Python agent code? | [Implementation learning path](docs/learning-path.md#2-structure-the-implementation) — `core`, `ml`, and `agents/sentiment`. |
+| How does work survive failures and human approval? | [Phase 2: production behavior](production/README.md). |
+| How do I run and investigate the deployed system? | [Deployment setup](production/category_05_deployment_and_operations/README.md) and [operations runbook](production/category_05_deployment_and_operations/runbook.md). |
+
+## How to learn with this repo
+
+For each lesson, **predict the result → run it → explain what happened → change
+one input or rule → check the new result**. Reading the code is useful when you
+want to understand a particular decision; you can start by observing behavior.
+
+| Layer | Where | What you should be able to explain |
+| --- | --- | --- |
+| Concepts · Phase 1 | `examples/concepts/` | How prediction, policy, tools, retrieval, memory, approval, and verification differ. |
+| Reusable implementation | `src/everyday_agents/` | How contracts, ML utilities, and a sentiment application fit together. |
+| Production behavior · Phase 2 | `production/` | How jobs persist, ownership is enforced, approved work resumes, and outcomes are measured. |
+
+Use the [full learning path](docs/learning-path.md) for prerequisites, reading
+order, commands, exercises, and checkpoints. The working applications are the
+learning material: a sentiment baseline and trained TF-IDF/logistic-regression
+model, plus an integrated policy-routing workflow with optional Ollama inference.
 
 ## Quick start
 
