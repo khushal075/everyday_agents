@@ -3,13 +3,15 @@
 ## Current status
 
 The sentiment-focused `v0.1.0` reference application is implemented and preserved.
-Phase 1 concept examples and Phase 2 production exercises are planned. This
-restructure adds their learning/documentation boundaries, not implementations.
+Phase 1 contains 15 concept exercises. Phase 2 contains the five-category
+reference implementation, including the integrated policy-routing workflow.
+Start with the [runnable concepts guide](../examples/concepts/README.md) or the
+[production guide](../production/README.md).
 
 ## Phase 1: understand the concepts
 
-Add small examples under `examples/concepts/` progressively. The proposed units
-below describe teaching scope; no corresponding Python scripts exist yet.
+The standalone scripts under `examples/concepts/` build the following ideas progressively.
+Use their README for exact file names, commands, and expected results.
 
 | Unit | Concept example | Main topics |
 | --- | --- | --- |
@@ -18,16 +20,16 @@ below describe teaching scope; no corresponding Python scripts exist yet.
 | 03 | Tools and decision policies | Structured arguments, registry, action selection |
 | 04 | Authorization and approval boundaries | Permissions, approval, untrusted data |
 | 05 | Verified feedback loop | Observe effects, verify, bound execution, stop on failure |
-| 06 | Retrieval | Chunking, keyword/vector/hybrid search, filtering, sources |
+| 06 | Retrieval | Keyword overlap, passages, source references |
 | 07 | Grounded RAG | Retrieve context, generate an answer, cite evidence |
-| 08 | Reranked RAG | Rank candidates, select context, compare retrieval quality |
-| 09 | Memory and context | Use history, retrieve memory, manage context limits |
-| 10 | Planning and replanning | LLM action proposals, decomposition, adapt plans |
+| 08 | Reranked RAG | Reorder keyword ties using word order; select model context |
+| 09 | Memory and context | Remember a topic and resolve a simple follow-up |
+| 10 | Planning and replanning | Search a simulated map; replan after a blocked move |
 | 11 | Safe recovery | Timeouts, retries, idempotency, ambiguous outcomes |
 | 12 | Checkpoints and resumable approval | Save state, restart, resume a specific approved action |
 | 13 | Coordinated agents | Delegation, parallel work, handoffs, bounded responsibilities |
 | 14 | Protocol integration | Real MCP tool discovery/calls; communication boundaries |
-| 15 | Evaluation and observability | Traces, task success, regression checks, cost/latency budgets |
+| 15 | Evaluation and observability | Structured traces, fixed expectations, elapsed time, regression detection |
 
 Not every example needs an LLM, a database, or a framework. Real LLM/protocol
 examples must declare their dependencies and credentials. Simulated responses
@@ -40,10 +42,22 @@ action and a policy authorizing it are separate responsibilities.
 
 ## Phase 2: demonstrate production behaviour
 
-Use `production/` for an integrated reference system, environment configuration,
-and operational exercises. Shared Python code belongs in `src/everyday_agents/`.
-Exercise real restarts, concurrency, external side effects, scoped access,
-observability, and deployment. See the [Phase 2 scope](../production/README.md).
+Follow the five categories under `production/` for saved jobs, models/retrieval/tools,
+reliability/access, evaluation/observability, and deployment/operations. The
+reference application reuses the sentiment package and adds a policy mode with
+persistent evidence, approval, resume, and review verification.
+
+Run the complete local exercise from the repository root:
+
+```bash
+uv run python -m production.category_02_models_retrieval_and_tools.integrated_feedback
+```
+
+It uses an explicitly labelled fixture generator and separate worker processes.
+Select Ollama for real inference as documented in Category 02. Use Category 05
+for actual HTTP container deployment and operations. Representative quality
+benchmarks, external business APIs, and multi-host infrastructure are extensions,
+not capabilities established by these local examples.
 
 ## Where the existing implementation fits
 

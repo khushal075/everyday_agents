@@ -10,21 +10,38 @@ local tests. The shared core and ML utilities remain available.
 Generated artifacts and build outputs remain local and ignored by Git. They are
 not course content or evidence of additional completed use cases.
 
-## Next: concepts-first learning path
+## Completed: concepts-first learning path
 
-Create standalone examples one at a time under `examples/concepts/`. Agree the
-scenario and teaching objective before implementation. Include a complete flow,
-expected output, an actual failure boundary, checks, and an honest production
-boundary. Do not create empty executable placeholders for future lessons.
+The 15 examples in `examples/concepts/` are implemented, with commands, expected
+behavior, dependencies, and explicit boundaries in their README. Examples 07–09
+need a local Ollama model. Example 14 uses a companion MCP server.
 
 See [learning path](learning-path.md) and [coverage matrix](coverage-matrix.md).
-No concept implementations are included in the structural cleanup.
 
-## Later: production behaviour
+## Completed: Phase 2 local reference
 
-Build the integrated application and operational exercises under `production/`,
-reusing the Python package for shared functionality. Implementation follows
-Phase 1 and is not implied by the directory's name.
+The five production categories are implemented. Policy retrieval and optional
+Ollama inference now connect to persistent jobs, immutable proposals, exact-action
+approval, resumable workers, transactional review creation, and result verification.
+The original sentiment workflow remains available and existing jobs keep their mode.
+
+Verification on 22 November 2026 includes 153 software tests, a package build,
+standalone restart/crash scenarios, and both sentiment and policy container smoke
+checks. Model protocol tests use local HTTP fixtures; live Ollama inference and
+hosted identity/notification endpoints need environment-specific validation.
+
+## Optional extensions after Phase 2
+
+Choose these for a concrete deployment or domain requirement:
+
+- Connect a real business API with idempotency and reconciliation contracts.
+- Evaluate retrieval and model recommendations on representative held-out tasks.
+- Introduce tenant-specific policy ingestion, source access, freshness, and retention.
+- Add production monitoring destinations, dashboards, alert scheduling, and TLS.
+- Replace single-host SQLite when distributed capacity and availability require it.
+
+These are beyond the completed local reference scope. They are not prerequisites
+for running either learning phase.
 
 ## Future domain applications
 
