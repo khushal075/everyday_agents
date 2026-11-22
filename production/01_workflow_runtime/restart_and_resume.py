@@ -27,7 +27,7 @@ def main():
         with closing(sqlite3.connect(str(database_path))) as connection:
             for filename in (
                 "001_initial.sql", "002_worker_leases.sql", "003_retry_scheduling.sql",
-                "004_access_and_approvals.sql", "005_cancellation_and_approval_controls.sql",
+                "004_access_and_approvals.sql", "005_cancellation_and_approval_controls.sql", "006_policy_workflow.sql",
             ):
                 connection.executescript(
                     (MIGRATION.parent / filename).read_text(encoding="utf-8")

@@ -7,10 +7,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Literal, Optional
+from typing import TYPE_CHECKING, Literal, Optional
 from time import perf_counter
 from uuid import uuid4
 from production.category_04_evaluation_and_observability.telemetry import EventOutcome, Telemetry
+
+if TYPE_CHECKING:
+    from production.category_03_reliability_and_access.approvals import ActionRequest
+
+WorkflowMode = Literal["sentiment", "policy"]
 
 JobStatus = Literal["queued", "running", "awaiting_approval", "completed", "failed"]
 FeedbackAction = Literal["record", "prepare_review"]
@@ -32,6 +37,7 @@ class FeedbackJob:
     tenant_id: str = "local"
     approval_required: bool = False
     cancellation_requested: bool = False
+    workflow_mode: WorkflowMode = "sentiment"
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,11 @@ class ReviewRecord:
     job_id: str
     status: Literal["pending_review"]
     created_at: str
+    operation_id: str | None = None
+    route: str | None = None
+    source: str | None = None
+    heading: str | None = None
+    reason: str | None = None
 
 class LeaseLost(ValueError):
     """The worker's claim expired or another worker owns the job."""
@@ -58,7 +69,7 @@ class LeaseLost(ValueError):
 
 def feedback_job(row: sqlite3.Row) -> FeedbackJob:
     """Read the public job fields from a database row."""
-    values = {field.name: row[field.name] for field in fields(FeedbackJob)}
+    values = {field.name: row[field.name] for field in fields(FeedbackJob) if field.name in row.keys()}
     values["approval_required"] = bool(values["approval_required"])
     values["cancellation_requested"] = bool(values["cancellation_requested"])
     return FeedbackJob(**values)
@@ -93,6 +104,7 @@ class FeedbackStore:
     def enqueue(
         self, feedback_text: str, *, tenant_id: str = "local",
         approval_required: bool = False,
+        workflow_mode: WorkflowMode = "sentiment",
     ) -> str:
         """
         Save feedback as queued job and return its ID
@@ -106,15 +118,17 @@ class FeedbackStore:
 
         if not tenant_id.strip():
             raise ValueError("tenant_id must not be blank.")
+        if workflow_mode not in ("sentiment", "policy"):
+            raise ValueError("workflow_mode must be sentiment or policy.")
         job_id = uuid4().hex
         with self._connection() as connection:
             connection.execute(
                 """
                 INSERT INTO
-                    feedback_jobs(job_id, feedback_text, tenant_id, approval_required)
+                    feedback_jobs(job_id, feedback_text, tenant_id, approval_required, workflow_mode)
                 VALUES
-                    (?, ?, ?, ?)
-                """, (job_id, feedback_text, tenant_id, approval_required)
+                    (?, ?, ?, ?, ?)
+                """, (job_id, feedback_text, tenant_id, approval_required, workflow_mode)
             )
         self._event("store.queued", job_id, started)
         return job_id
@@ -254,6 +268,8 @@ class FeedbackStore:
         with self._connection() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = self._owned_job(connection, job_id, claim_token)
+            if row["workflow_mode"] == "policy" and action == "prepare_review":
+                raise ValueError("Policy reviews require complete_policy and a saved proposal.")
             proposal_exists = connection.execute(
                 "SELECT 1 FROM action_requests WHERE operation_id = ? AND tenant_id = ?",
                 (f"{job_id}:review", row["tenant_id"]),
@@ -307,6 +323,92 @@ class FeedbackStore:
                     """, (job_id,)
                 )
         self._event("store.completed", job_id, started)
+
+    def save_policy_request(self, claim: JobClaim, request: "ActionRequest") -> bool:
+        """
+        - Save the exact routing proposal while the caller owns the lease.
+        - Release the claim atomically when human approval is required.
+
+        :param claim: Current worker claim.
+        :param request: Validated policy action including its evidence snapshot.
+        :return: True when execution must wait for human approval.
+        """
+        from production.feedback_workflow import FeedbackWorkflow
+        from production.category_03_reliability_and_access.approvals import ApprovalStore
+        started = perf_counter()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = self._owned_job(connection, claim.job.job_id, claim.token)
+            if row["workflow_mode"] != "policy":
+                raise ValueError("Cannot save a policy proposal for a sentiment job.")
+            plan = FeedbackWorkflow.restore(
+                request, feedback=row["feedback_text"], job_id=row["job_id"], tenant_id=row["tenant_id"],
+            )
+            ApprovalStore.write_request(connection, row["job_id"], request)
+            approval = ApprovalStore.read_decision(connection, request.operation_id, request.tenant_id)
+            waiting = bool(row["approval_required"]) and approval is None
+            if waiting:
+                connection.execute(
+                    """UPDATE feedback_jobs SET status = 'awaiting_approval', action = 'prepare_review',
+                        reason = ?, claim_token = NULL, lease_expires_at = NULL,
+                        attempt_count = attempt_count - 1, updated_at = CURRENT_TIMESTAMP
+                        WHERE job_id = ?""",
+                    (plan.recommendation.reason, row["job_id"]),
+                )
+        self._event("store.awaiting_approval" if waiting else "store.proposal_saved", claim.job.job_id, started)
+        return waiting
+
+    def complete_policy(self, claim: JobClaim, request: "ActionRequest") -> None:
+        """
+        - Commit one review and job completion under a valid, uncancelled lease.
+        - Recheck the saved proposal and exact approval inside the transaction.
+        - Keep route and citation metadata with the persistent review.
+
+        :param claim: Current worker claim.
+        :param request: Exact previously persisted policy proposal.
+        :return: None.
+        """
+        from production.feedback_workflow import FeedbackWorkflow
+        from production.category_03_reliability_and_access.approvals import (
+            ActionRequest, ApprovalPolicy, ApprovalRequired, ApprovalStore,
+        )
+        from production.category_03_reliability_and_access.security import AccessPolicy
+        started = perf_counter()
+        with self._connection() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = self._owned_job(connection, claim.job.job_id, claim.token)
+            if row["workflow_mode"] != "policy":
+                raise ValueError("Policy execution requires a policy job.")
+            plan = FeedbackWorkflow.restore(
+                request, feedback=row["feedback_text"], job_id=row["job_id"], tenant_id=row["tenant_id"],
+            )
+            saved = connection.execute(
+                "SELECT * FROM action_requests WHERE operation_id = ? AND job_id = ? AND tenant_id = ?",
+                (request.operation_id, row["job_id"], row["tenant_id"]),
+            ).fetchone()
+            if saved is None or request != ActionRequest(
+                saved["operation_id"], saved["tenant_id"], saved["action"], saved["parameters_json"],
+            ):
+                raise ApprovalRequired("Execution requires the exact saved proposal.")
+            if row["approval_required"]:
+                ApprovalPolicy(AccessPolicy()).require(request, ApprovalStore.read_decision(
+                    connection, request.operation_id, request.tenant_id,
+                ))
+            recommendation = plan.recommendation
+            connection.execute(
+                """INSERT INTO review_records(job_id, operation_id, route, source, heading, reason)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (row["job_id"], request.operation_id, recommendation.route,
+                 recommendation.policy_passage.source, recommendation.policy_passage.heading,
+                 recommendation.reason),
+            )
+            connection.execute(
+                """UPDATE feedback_jobs SET status = 'completed', action = 'prepare_review',
+                   reason = ?, error = NULL, claim_token = NULL, lease_expires_at = NULL,
+                   updated_at = CURRENT_TIMESTAMP WHERE job_id = ?""",
+                (recommendation.reason, row["job_id"]),
+            )
+        self._event("store.completed", claim.job.job_id, started)
 
     def schedule_retry(
         self, claim: JobClaim, error: str, delay_seconds: float,
