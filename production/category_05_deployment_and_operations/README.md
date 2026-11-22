@@ -103,6 +103,47 @@ and notification destination when those are available.
 | Alert check | 0 clear, 1 active alerts, 2 unable to evaluate |
 | Migration | 0 applied/already applied, 1 failed |
 
+## Select the integrated policy workflow
+
+The default API stamps new jobs with `sentiment`. To submit new policy-routing
+jobs, add the following settings to the environment file:
+
+```dotenv
+FEEDBACK_WORKFLOW_MODE=policy
+FEEDBACK_ROUTING_GENERATOR=fixture
+```
+
+Use the upgrade steps in the runbook before changing an existing deployment.
+Migration 006 preserves existing jobs and reviews. Then recreate API and worker:
+
+```bash
+docker compose up -d --force-recreate --wait --wait-timeout 90 api worker
+docker compose run --rm --no-deps smoke
+```
+
+The explicit fixture generator performs no inference. The smoke test submits
+negative duplicate-charge feedback, approves its exact proposal, and verifies
+the persistent route and citation. Existing jobs keep their saved workflow mode.
+
+For actual Ollama inference, configure the worker instead:
+
+```dotenv
+FEEDBACK_ROUTING_GENERATOR=ollama
+FEEDBACK_ROUTING_MODEL=qwen
+FEEDBACK_OLLAMA_URL=http://host.docker.internal:11434/api/generate
+FEEDBACK_MODEL_TIMEOUT=10
+```
+
+Use an exact installed model name. `host.docker.internal` addresses the host on
+Docker Desktop; Linux hosts need a reachable inference service address or explicit
+host-gateway configuration. The endpoint is operator configuration and must be
+trusted with feedback data. No model is downloaded or model server started by
+Compose. Cold-start latency can exceed the bounded socket timeout.
+
+Missing model configuration fails explicitly. Already saved proposals resume
+without inference. Read [Category 02](../category_02_models_retrieval_and_tools/README.md)
+for the complete lifecycle, failure behavior, and model-quality limits.
+
 ## Portable identity-provider authentication
 
 The API also accepts OIDC bearer access tokens. Configure these settings in the
@@ -246,14 +287,16 @@ adoption flag. Stop services before running migrations.
 Local operations tests cover fresh/repeated migrations, manual adoption,
 rollback on migration failure, checksum mismatch, health failures, and alerts.
 The deployment exercise builds the image and checks the actual container API,
-worker, and approval flow. CI runs those checks on each push and pull request.
+worker, and approval flow. CI is configured to run those checks on each push and pull request for both
+sentiment and policy workflows; policy CI uses the explicit fixture generator.
 
-Verified locally on 21 November 2026 using Docker Desktop engine 29.7.2 on
-Apple Silicon:
+Verification combines the 21 November operations checks with the full-suite and
+both-workflow container checks on 22 November 2026, using Docker Desktop engine
+29.7.2 on Apple Silicon:
 
 | Check | Result |
 | --- | --- |
-| Full Python suite | 132 tests passed, including operations and portable integration checks. |
+| Full Python suite | 153 tests passed, including policy integration, operations, and portable integration checks. |
 | Locked container build | Passed; the runtime uses UID 10001. |
 | Compose startup and service health | Passed. |
 | Authenticated submission, approval, and completion | Passed through the actual container API. |
@@ -274,5 +317,7 @@ process needs operator or orchestrator intervention.
 
 Provider-specific login, TLS termination, remote endpoint verification,
 distributed database failover, and multi-host orchestration remain deployment
-integration work. Model inference and review creation still use the existing
-local sentiment baseline and SQLite workflow.
+integration work. The worker supports the existing sentiment baseline and the
+integrated policy workflow. Policy review creation is transactional SQLite execution.
+Ollama protocol behavior was verified with local HTTP fixtures; no live model server
+was available during this run. External business-tool APIs need separate adapters.

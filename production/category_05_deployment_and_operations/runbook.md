@@ -164,3 +164,23 @@ Do not log access tokens or place them in command-line arguments. Smoke-test
 tokens are read from the environment. Expired tokens require a new provider
 login or token grant. Changing issuer or audience requires recreating the API
 container.
+
+## Policy-workflow recovery
+
+Migration 006 adds workflow mode and review metadata without rewriting existing
+proposals or completed reviews. Existing jobs remain sentiment jobs. API mode
+changes affect newly submitted jobs only, so a mixed queue is supported.
+
+A policy job saves its complete recommendation and evidence before waiting for
+approval. Resume restores that exact proposal, even when the model is unavailable
+or the original policy document has changed. Recomputing it after approval would
+change what was authorized. Submit a new job for a genuinely new proposal.
+
+A timeout before proposal persistence can retry inference. A failure after the
+proposal is saved reuses the saved proposal. Leases and cancellation are rechecked
+before execution. Invalid output and disallowed routes escalate without a review.
+
+Review insertion and job completion share a transaction. If post-commit verification
+fails, the job stays completed and `worker.verification_failed` reports the problem.
+Investigate the saved proposal and review; do not replay the business action merely
+because its read-back failed. The worker returns nonzero for this verification failure.

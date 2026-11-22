@@ -78,6 +78,7 @@ Run isolated exercises before configuring a persistent deployment:
 ```bash
 uv run python -m production.01_workflow_runtime.restart_and_resume
 uv run python -m production.category_02_models_retrieval_and_tools.model_and_tool_failures
+uv run python -m production.category_02_models_retrieval_and_tools.integrated_feedback
 uv run python -m production.category_03_reliability_and_access.crash_and_retry
 uv run python -m production.category_03_reliability_and_access.permissions_and_approval
 uv run python -m production.category_04_evaluation_and_observability.evaluate
@@ -85,9 +86,12 @@ uv run python -m production.category_04_evaluation_and_observability.service_loa
 ```
 
 The production exercises use separate processes and real local HTTP where stated.
-The deployment uses one host and SQLite. Category 02's model responses are
-scripted and its review tool is in memory. Connecting real retrieval and external
-model/tool execution to the persistent worker remains integration work.
+The deployment uses one host and SQLite. Policy routing is now connected to the
+persistent worker, including saved evidence, exact-action approval, resumed
+execution, and verified review metadata. Run the integrated example with its
+explicit fixture generator, or select `--generator ollama --model <installed-name>`
+for real inference. See the Category 02 README for configuration and limitations.
+External business systems such as refund or CRM APIs are outside this local tool.
 
 ### Authentication and notifications
 
@@ -140,7 +144,7 @@ the caller. See [evaluation](docs/evaluation.md) and
 
 ## Verified behavior and limits
 
-Local verification on 21 November 2026 passed **132 software tests**.
+Local verification on 22 November 2026 passed **153 software tests**.
 The Docker exercise verified non-root startup, authenticated approval and
 completion, restart persistence, SQLite backup/restore, and alert exit codes.
 
@@ -182,6 +186,7 @@ everyday_agents/
 │   ├── api.py                     # Authenticated feedback endpoints
 │   ├── store.py                   # Persistent jobs and transactional execution
 │   ├── worker.py                  # One bounded processing attempt
+│   ├── feedback_workflow.py       # Policy proposal preparation and restoration
 │   ├── 01_workflow_runtime/
 │   ├── category_02_models_retrieval_and_tools/
 │   ├── category_03_reliability_and_access/

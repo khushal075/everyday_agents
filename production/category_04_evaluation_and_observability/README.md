@@ -230,5 +230,7 @@ contain gaps after logging failures. The workflow database remains the source
 of job state.
 
 Deployment wiring, external monitoring and alerting, and dashboards belong to
-Category 05. Real model and external tool integration remain Phase 2 integration
-work.
+Category 05. The persistent worker now also supports policy retrieval, optional
+Ollama inference, and verified local review creation. The Category 02 integrated
+example checks policy preparation, proposal restoration, and verification events.
+External business API adapters and hosted monitoring remain deployment-specific.

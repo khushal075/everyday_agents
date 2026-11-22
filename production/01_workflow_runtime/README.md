@@ -19,7 +19,8 @@ that the policy flags for review also gets a review record.
 
 The runtime now uses tenant credentials, worker leases, retry scheduling, and
 durable approval. Follow the [Category 03 setup and manual workflow](../category_03_reliability_and_access/README.md)
-to apply all five migrations and configure the API key.
+for credentials. Apply all six migrations with the
+[tracked migration runner](../category_05_deployment_and_operations/README.md).
 
 The automated exercise below explicitly disables approval in its API instance
 so it continues to demonstrate queued-job processing in one worker invocation.

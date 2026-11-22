@@ -49,6 +49,7 @@ that have not already been applied, in numeric order:
 3. `003_retry_scheduling.sql`
 4. `004_access_and_approvals.sql`
 5. `005_cancellation_and_approval_controls.sql`
+6. `006_policy_workflow.sql` — saved workflow mode and policy review metadata.
 
 All files are under `production/01_workflow_runtime/migrations/`.
 Migration 004 rebuilds the jobs table, preserves existing records, and assigns
@@ -60,6 +61,7 @@ For a database already migrated through 003:
 ```bash
 sqlite3 -bail feedback-runtime.sqlite3 < production/01_workflow_runtime/migrations/004_access_and_approvals.sql
 sqlite3 -bail feedback-runtime.sqlite3 < production/01_workflow_runtime/migrations/005_cancellation_and_approval_controls.sql
+sqlite3 -bail feedback-runtime.sqlite3 < production/01_workflow_runtime/migrations/006_policy_workflow.sql
 sqlite3 feedback-runtime.sqlite3 'PRAGMA foreign_key_check;'
 ```
 
