@@ -95,3 +95,7 @@ Desktop.ini
 # Dependency lockfiles are intentionally trackable for reproducibility.
 # Dataset formats and model extensions are not ignored globally: store private
 # data and generated models in the dedicated directories listed above.
+
+# Generated concept-example state; fixtures in subdirectories remain trackable
+/examples/concepts/*.json
+/examples/concepts/*.json.tmp
